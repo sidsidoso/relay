@@ -4,7 +4,7 @@ import { seed } from '../src/db/seed'
 import { EventBus } from '../src/core/events'
 import { ChannelRegistry } from '../src/channels/types'
 import { WidgetChannel } from '../src/channels/widget'
-import { buildServer } from '../src/server'
+import { buildServer, WS_MAX_PAYLOAD } from '../src/server'
 import { listConversations, teamReply } from '../src/core/conversations'
 
 const TOKEN = 'v'.repeat(32)
@@ -98,5 +98,13 @@ describe('/ws/widget', () => {
     expect(await next()).toMatchObject({ type: 'message', message: { text: 'two' } })
     emit.mockRestore(); err.mockRestore()
     ws.terminate()
+  })
+
+  it('closes the socket with 1009 when a frame exceeds the payload limit', async () => {
+    const { app } = await setup()
+    const ws = await app.injectWS(`/ws/widget?token=${TOKEN}`)
+    const closed = new Promise<number>((resolve) => ws.once('close', (c: number) => resolve(c)))
+    ws.send('x'.repeat(WS_MAX_PAYLOAD + 1))
+    expect(await closed).toBe(1009)
   })
 })
