@@ -19,12 +19,6 @@ function notFound(reply: FastifyReply) {
 export function conversationRoutes(app: FastifyInstance, deps: CoreDeps) {
   const requireUser = makeRequireUser(deps.db)
 
-  app.setErrorHandler((err, _req, reply) => {
-    if (err instanceof NotFoundError) return notFound(reply)
-    if (err instanceof z.ZodError) return reply.code(400).send({ error: 'Invalid request', code: 'invalid_body' })
-    reply.code(500).send({ error: 'Internal error', code: 'internal' })
-  })
-
   app.get('/api/conversations', { preHandler: requireUser }, async (req) => {
     const q = ListQuery.parse(req.query)
     return { conversations: listConversations(deps, { status: q.status, assigneeId: q.mine ? req.user!.id : undefined }) }
