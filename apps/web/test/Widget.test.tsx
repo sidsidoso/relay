@@ -34,4 +34,34 @@ describe('Widget', () => {
     fireEvent.submit(screen.getByRole('form', { name: /chat/i }))
     expect(JSON.parse(FakeSocket.last.sent[0]!)).toEqual({ type: 'text', text: 'Price?' })
   })
+
+  it('keeps the draft and shows a status when the socket is not ready', () => {
+    render(<Widget company="Acme Coworking" />)
+    fireEvent.click(screen.getByRole('button', { name: /chat with us/i }))
+    FakeSocket.last.readyState = 0
+    const input = screen.getByPlaceholderText(/type a message/i)
+    fireEvent.change(input, { target: { value: 'Hello?' } })
+    fireEvent.submit(screen.getByRole('form', { name: /chat/i }))
+    expect(input).toHaveValue('Hello?')
+    expect(screen.getByRole('status')).toHaveTextContent('Connecting… try again in a moment.')
+  })
+
+  it('shows an alert on an error frame', () => {
+    render(<Widget company="Acme Coworking" />)
+    fireEvent.click(screen.getByRole('button', { name: /chat with us/i }))
+    act(() => FakeSocket.last.emit({ type: 'error', code: 'internal' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Your message could not be sent.')
+  })
+
+  it('still returns a long token when localStorage throws and randomUUID is missing', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied') })
+    const original = crypto.randomUUID
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true })
+    const t = visitorToken()
+    expect(t.length).toBeGreaterThanOrEqual(32)
+    expect(visitorToken()).toBe(t)
+    Object.defineProperty(crypto, 'randomUUID', { value: original, configurable: true })
+    get.mockRestore(); set.mockRestore()
+  })
 })
