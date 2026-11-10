@@ -6,7 +6,7 @@ import type { Contact, Conversation, Message } from '../core/types'
 import { historyForContact, receiveInbound, type CoreDeps } from '../core/conversations'
 
 const Frame = z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(4000) })
-const Query = z.object({ token: z.string().min(1).max(100), name: z.string().max(80).optional() })
+const Query = z.object({ token: z.string().min(32).max(100), name: z.string().max(80).optional() })
 
 export class WidgetChannel implements Channel {
   readonly id = 'widget' as const
@@ -52,8 +52,13 @@ export function widgetSocket(app: FastifyInstance, deps: CoreDeps, widget: Widge
         socket.send(JSON.stringify({ type: 'error', code: 'invalid_frame' }))
         return
       }
-      const { message } = receiveInbound(deps, { channel: 'widget', contactKey: token, contactName: name, type: 'text', text: frame.text })
-      widget.push(token, { type: 'message', message })
+      try {
+        const { message } = receiveInbound(deps, { channel: 'widget', contactKey: token, contactName: name, type: 'text', text: frame.text })
+        widget.push(token, { type: 'message', message })
+      } catch (err) {
+        console.error('[relay] widget message failed', err)
+        if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: 'error', code: 'internal' }))
+      }
     })
     socket.on('close', detach)
   })

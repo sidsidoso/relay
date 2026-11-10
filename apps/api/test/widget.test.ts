@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createDb } from '../src/db/client'
 import { seed } from '../src/db/seed'
 import { EventBus } from '../src/core/events'
@@ -6,6 +6,8 @@ import { ChannelRegistry } from '../src/channels/types'
 import { WidgetChannel } from '../src/channels/widget'
 import { buildServer } from '../src/server'
 import { listConversations, teamReply } from '../src/core/conversations'
+
+const TOKEN = 'v'.repeat(32)
 
 async function setup() {
   const db = createDb(':memory:')
@@ -33,7 +35,7 @@ function frames(ws: any) {
 describe('/ws/widget', () => {
   it('a visitor message becomes a conversation, and the team reply reaches the visitor', async () => {
     const { app, deps } = await setup()
-    const ws = await app.injectWS('/ws/widget?token=visitor-abc&name=Ana')
+    const ws = await app.injectWS(`/ws/widget?token=${TOKEN}&name=Ana`)
     const next = frames(ws)
     expect(await next()).toEqual({ type: 'history', messages: [] })
 
@@ -51,13 +53,13 @@ describe('/ws/widget', () => {
 
   it('reconnecting gets the history of the current conversation', async () => {
     const { app } = await setup()
-    const a = await app.injectWS('/ws/widget?token=visitor-abc')
+    const a = await app.injectWS(`/ws/widget?token=${TOKEN}`)
     const nextA = frames(a)
     await nextA()
     a.send(JSON.stringify({ type: 'text', text: 'First' }))
     await nextA()
     a.terminate()
-    const b = await app.injectWS('/ws/widget?token=visitor-abc')
+    const b = await app.injectWS(`/ws/widget?token=${TOKEN}`)
     const hist = await frames(b)()
     expect(hist.messages.map((m: any) => m.text)).toEqual(['First'])
     b.terminate()
@@ -65,7 +67,7 @@ describe('/ws/widget', () => {
 
   it('rejects bad frames and a missing token', async () => {
     const { app } = await setup()
-    const ws = await app.injectWS('/ws/widget?token=v')
+    const ws = await app.injectWS(`/ws/widget?token=${TOKEN}`)
     const next = frames(ws)
     await next()
     ws.send('not json')
@@ -74,5 +76,27 @@ describe('/ws/widget', () => {
     const noToken = await app.injectWS('/ws/widget')
     const code = await new Promise<number>((resolve) => noToken.once('close', (c: number) => resolve(c)))
     expect(code).toBe(4400)
+  })
+  it('rejects a too-short visitor token with 4400', async () => {
+    const { app } = await setup()
+    const ws = await app.injectWS('/ws/widget?token=0123456789')
+    const code = await new Promise<number>((resolve) => ws.once('close', (c: number) => resolve(c)))
+    expect(code).toBe(4400)
+  })
+
+  it('replies with an internal error frame when handling fails, and stays usable', async () => {
+    const { app, deps } = await setup()
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const emit = vi.spyOn(deps.bus, 'emit').mockImplementationOnce(() => { throw new Error('boom') })
+    const ws = await app.injectWS(`/ws/widget?token=${TOKEN}`)
+    const next = frames(ws)
+    await next()
+    ws.send(JSON.stringify({ type: 'text', text: 'one' }))
+    expect(await next()).toEqual({ type: 'error', code: 'internal' })
+    expect(err).toHaveBeenCalledWith('[relay] widget message failed', expect.any(Error))
+    ws.send(JSON.stringify({ type: 'text', text: 'two' }))
+    expect(await next()).toMatchObject({ type: 'message', message: { text: 'two' } })
+    emit.mockRestore(); err.mockRestore()
+    ws.terminate()
   })
 })
