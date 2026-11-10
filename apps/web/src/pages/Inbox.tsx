@@ -67,9 +67,11 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
   (code) => { if (code === 4401) onLogoutRef.current() }).stop, [])
 
   function select(id: number) {
+    if (id === selectedRef.current) return
     selectedRef.current = id
     setSelectedId(id)
     setDetail(null)
+    setDraft('')
     setReplyError(false)
     setActionError(false)
   }

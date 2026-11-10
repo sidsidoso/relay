@@ -83,6 +83,22 @@ describe('Inbox', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Action failed. Try again.')
   })
 
+  it('keeps the detail visible when the already selected conversation is clicked again', async () => {
+    await openFirst()
+    fireEvent.click(screen.getByRole('button', { name: /Ana/ }))
+    expect(await screen.findByRole('heading', { name: 'Ana' })).toBeInTheDocument()
+    expect(screen.queryByText('Select a conversation')).toBeNull()
+    expect(screen.getByText('hi from Ana')).toBeInTheDocument()
+  })
+
+  it('does not carry the draft of one conversation over to another', async () => {
+    await openFirst()
+    fireEvent.change(screen.getByPlaceholderText(/reply as the team/i), { target: { value: 'for Ana only' } })
+    fireEvent.click(screen.getByRole('button', { name: /Bob/ }))
+    expect(await screen.findByText('hi from Bob')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/reply as the team/i)).toHaveValue('')
+  })
+
   it('does not render a stale conversation when the selection changes while loading', async () => {
     let resolveFirst!: (v: ReturnType<typeof detail>) => void
     mocked.get.mockImplementationOnce(() => new Promise((r) => { resolveFirst = r }))
