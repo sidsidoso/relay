@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { WebSocket } from 'ws'
 import { z } from 'zod'
@@ -38,8 +39,10 @@ export function widgetSocket(app: FastifyInstance, deps: CoreDeps, widget: Widge
     const q = Query.safeParse(req.query)
     if (!q.success) { socket.close(4400, 'invalid_token'); return }
     const { token, name } = q.data
-    const detach = widget.attach(token, socket)
-    const history = historyForContact(deps, 'widget', token)
+    // The token is a bearer secret: only its hash is used as the contact key, so it never reaches the DB or API.
+    const contactKey = createHash('sha256').update(token).digest('hex')
+    const detach = widget.attach(contactKey, socket)
+    const history = historyForContact(deps, 'widget', contactKey)
     setImmediate(() => {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: 'history', messages: history }))
     })
@@ -53,8 +56,8 @@ export function widgetSocket(app: FastifyInstance, deps: CoreDeps, widget: Widge
         return
       }
       try {
-        const { message } = receiveInbound(deps, { channel: 'widget', contactKey: token, contactName: name, type: 'text', text: frame.text })
-        widget.push(token, { type: 'message', message })
+        const { message } = receiveInbound(deps, { channel: 'widget', contactKey, contactName: name, type: 'text', text: frame.text })
+        widget.push(contactKey, { type: 'message', message })
       } catch (err) {
         console.error('[relay] widget message failed', err)
         if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: 'error', code: 'internal' }))

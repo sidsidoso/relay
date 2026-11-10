@@ -5,7 +5,9 @@ import { EventBus } from '../src/core/events'
 import { ChannelRegistry } from '../src/channels/types'
 import { WidgetChannel } from '../src/channels/widget'
 import { buildServer, WS_MAX_PAYLOAD } from '../src/server'
+import { createHash } from 'node:crypto'
 import { listConversations, teamReply } from '../src/core/conversations'
+import { contacts } from '../src/db/schema'
 
 const TOKEN = 'v'.repeat(32)
 
@@ -106,5 +108,18 @@ describe('/ws/widget', () => {
     const closed = new Promise<number>((resolve) => ws.once('close', (c: number) => resolve(c)))
     ws.send('x'.repeat(WS_MAX_PAYLOAD + 1))
     expect(await closed).toBe(1009)
+  })
+
+  it('stores only the sha256 of the visitor token as the contact key', async () => {
+    const { app, deps } = await setup()
+    const ws = await app.injectWS(`/ws/widget?token=${TOKEN}`)
+    const next = frames(ws)
+    await next()
+    ws.send(JSON.stringify({ type: 'text', text: 'Hi' }))
+    await next()
+    const [contact] = deps.db.select().from(contacts).all()
+    expect(contact!.contactKey).toBe(createHash('sha256').update(TOKEN).digest('hex'))
+    expect(contact!.contactKey).not.toBe(TOKEN)
+    ws.terminate()
   })
 })
