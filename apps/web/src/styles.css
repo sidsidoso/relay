@@ -32,3 +32,11 @@ input { font: inherit; padding: 8px; border: 1px solid var(--line); border-radiu
 .msg-agent { border-color: var(--accent); } .msg-who, .msg-time { font-size: 12px; color: var(--muted); }
 .reply { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line); } .reply input { flex: 1; }
 @media (max-width: 800px) { .inbox { grid-template-columns: 1fr; } .col-contact { display: none; } }
+.demo-site { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
+.widget-launcher { position: fixed; right: 20px; bottom: 20px; background: var(--accent); color: #fff; border: 0; border-radius: 99px; padding: 12px 18px; }
+.widget { position: fixed; right: 20px; bottom: 20px; width: min(360px, calc(100vw - 32px)); height: 480px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 30px rgb(0 0 0 / .15); }
+.widget-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.widget-body { list-style: none; margin: 0; padding: 12px; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.w-msg { max-width: 80%; padding: 6px 10px; border-radius: 10px; }
+.w-me { align-self: flex-end; background: var(--accent); color: #fff; } .w-them { align-self: flex-start; background: var(--bg); }
+.widget-form { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); } .widget-form input { flex: 1; }
