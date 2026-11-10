@@ -7,22 +7,41 @@ import * as password from './password'
 import { createSession, deleteSession } from './sessions'
 import { SESSION_COOKIE, makeRequireUser } from './guard'
 
-// Verified against when the email is unknown so response time does not reveal which accounts exist.
-let dummyHash: Promise<string> | undefined
-const getDummyHash = () => (dummyHash ??= password.hashPassword('relay-dummy-password'))
-
 const LoginBody = z.object({ email: z.string().email(), password: z.string().min(1) })
+
+const DUMMY_PASSWORD = 'relay-dummy-password'
 
 export function authRoutes(app: FastifyInstance, db: Db) {
   const requireUser = makeRequireUser(db)
+
+  // Verified against when the email is unknown so response time does not reveal which accounts exist.
+  // Started eagerly at build time so the first unknown-email login does not pay an extra scrypt.
+  const startDummyHash = () => {
+    const p = password.hashPassword(DUMMY_PASSWORD)
+    p.catch(() => {}) // avoid an unhandled rejection; the failure is surfaced on the next login instead
+    return p
+  }
+  let dummyHash = startDummyHash()
+  async function getDummyHash(): Promise<string> {
+    try {
+      return await dummyHash
+    } catch {
+      dummyHash = startDummyHash()
+      return dummyHash
+    }
+  }
 
   app.post('/api/auth/login', async (req, reply) => {
     const body = LoginBody.safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Invalid body', code: 'invalid_body' })
     const u = db.select().from(users).where(eq(users.email, body.data.email.toLowerCase())).get()
-    const ok = u
-      ? await password.verifyPassword(body.data.password, u.passwordHash)
-      : (await password.verifyPassword(body.data.password, await getDummyHash()), false)
+    let ok = false
+    if (u) {
+      ok = await password.verifyPassword(body.data.password, u.passwordHash)
+    } else {
+      // Dummy verification so an unknown email costs the same time as a known one.
+      await password.verifyPassword(body.data.password, await getDummyHash())
+    }
     if (!u || !ok) {
       return reply.code(401).send({ error: 'Invalid email or password', code: 'invalid_credentials' })
     }

@@ -35,6 +35,24 @@ describe('auth', () => {
     }
   })
 
+  it('computes the dummy hash at server build so an unknown-email login does no hashing', async () => {
+    const hashSpy = vi.spyOn(password, 'hashPassword')
+    const verifySpy = vi.spyOn(password, 'verifyPassword')
+    try {
+      const { app } = await testServer()
+      expect(hashSpy).toHaveBeenCalledWith('relay-dummy-password')
+      hashSpy.mockClear()
+      verifySpy.mockClear()
+      const unknown = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'ghost@example.com', password: 'nope' } })
+      expect(unknown.statusCode).toBe(401)
+      expect(hashSpy).toHaveBeenCalledTimes(0)
+      expect(verifySpy).toHaveBeenCalledTimes(1)
+    } finally {
+      hashSpy.mockRestore()
+      verifySpy.mockRestore()
+    }
+  })
+
   it('rejects a malformed body with 400', async () => {
     const { app } = await testServer()
     const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 1 } })
