@@ -1,6 +1,6 @@
 FROM node:24-slim AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/web/package.json apps/web/
 RUN npm ci -w apps/web --include-workspace-root=false
 COPY apps/web apps/web
