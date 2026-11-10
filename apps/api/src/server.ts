@@ -1,14 +1,20 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 import cookie from '@fastify/cookie'
-import type { Db } from './db/client'
+import websocket from '@fastify/websocket'
 import { authRoutes } from './auth/routes'
+import { conversationRoutes } from './core/routes'
+import { inboxSocket } from './realtime/inbox'
+import type { CoreDeps } from './core/conversations'
 
-export type ServerDeps = { db: Db }
+export type ServerDeps = CoreDeps
 
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: false })
   await app.register(cookie)
+  await app.register(websocket)
   app.get('/api/health', async () => ({ ok: true }))
   authRoutes(app, deps.db)
+  conversationRoutes(app, deps)
+  inboxSocket(app, deps)
   return app
 }
