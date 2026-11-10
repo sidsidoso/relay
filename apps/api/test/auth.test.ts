@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import * as password from '../src/auth/password'
 import { testServer } from './helpers'
 import { DEMO_USER } from '../src/db/seed'
 
@@ -18,6 +19,20 @@ describe('auth', () => {
     const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: DEMO_USER.email, password: 'nope' } })
     expect(res.statusCode).toBe(401)
     expect(res.json()).toEqual({ error: 'Invalid email or password', code: 'invalid_credentials' })
+  })
+
+  it('unknown email gets the same 401 body and still runs a dummy password verification', async () => {
+    const { app } = await testServer()
+    const wrong = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: DEMO_USER.email, password: 'nope' } })
+    const spy = vi.spyOn(password, 'verifyPassword')
+    try {
+      const unknown = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'ghost@example.com', password: 'nope' } })
+      expect(unknown.statusCode).toBe(401)
+      expect(unknown.json()).toEqual(wrong.json())
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it('rejects a malformed body with 400', async () => {

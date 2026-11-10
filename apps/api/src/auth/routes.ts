@@ -3,9 +3,13 @@ import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client'
 import { users } from '../db/schema'
-import { verifyPassword } from './password'
+import * as password from './password'
 import { createSession, deleteSession } from './sessions'
 import { SESSION_COOKIE, makeRequireUser } from './guard'
+
+// Verified against when the email is unknown so response time does not reveal which accounts exist.
+let dummyHash: Promise<string> | undefined
+const getDummyHash = () => (dummyHash ??= password.hashPassword('relay-dummy-password'))
 
 const LoginBody = z.object({ email: z.string().email(), password: z.string().min(1) })
 
@@ -16,7 +20,10 @@ export function authRoutes(app: FastifyInstance, db: Db) {
     const body = LoginBody.safeParse(req.body)
     if (!body.success) return reply.code(400).send({ error: 'Invalid body', code: 'invalid_body' })
     const u = db.select().from(users).where(eq(users.email, body.data.email.toLowerCase())).get()
-    if (!u || !(await verifyPassword(body.data.password, u.passwordHash))) {
+    const ok = u
+      ? await password.verifyPassword(body.data.password, u.passwordHash)
+      : (await password.verifyPassword(body.data.password, await getDummyHash()), false)
+    if (!u || !ok) {
       return reply.code(401).send({ error: 'Invalid email or password', code: 'invalid_credentials' })
     }
     const token = createSession(db, u.id)
