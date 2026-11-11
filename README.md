@@ -2,7 +2,7 @@
 
 An open-source omnichannel inbox with an AI agent and local voice transcription.
 
-> Status: plan 3 of 6 — the agent runs on Claude, a local Ollama model, or a scripted demo provider. Next: the settings screen and knowledge base editor.
+> Status: plan 4 of 6 — voice messages are transcribed locally with Whisper; the agent runs on Claude, a local Ollama model, or a scripted demo provider. Next: the settings screen and knowledge base editor.
 
 ## Run it
 
@@ -56,6 +56,42 @@ Notes:
 - **Quick check** of your configuration, outside the app: `npm run try-provider -w apps/api -- "How much is a meeting room?"` sends one real request and prints the result.
 - **Tests never call a model.** The Claude and Ollama adapters are tested against recorded responses in `apps/api/test/fixtures/`, so CI needs no key and no network.
 
+## Voice messages
+
+Customers can record a voice message in the widget (the browser's `MediaRecorder`, opus in WebM, up to 2 minutes). Relay stores the file in the media folder (`/data/media` in the `relay-data` volume) and a small Python service, `services/transcriber`, turns it into text with [faster-whisper](https://github.com/SYSTRAN/faster-whisper). The inbox shows a player with the transcription below it, and the agent reads it as `[customer audio, transcribed] …`.
+
+- **Audio never leaves the server.** The model runs locally on the CPU. The transcriber is reachable only on the internal Docker network, keeps the audio in memory, and never logs the text.
+- **Transcription never blocks the agent.** Each audio gets up to 40 s, and a turn spends at most 40 s on transcription. If transcription fails, the agent still answers and sees `[audio]`. If the transcriber is down or still loading its model, nothing is marked as failed and the audio is transcribed when it comes back.
+- **The first start downloads the model** into the `whisper-models` volume (`small` is about 500 MB), so the first voice message can take a while.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `TRANSCRIBER_MODEL` | `small` | Whisper model: `tiny`, `base`, `small`, `medium`, `large-v3-turbo`… |
+| `TRANSCRIBER_URL` | `http://transcriber:8000` in Docker; unset with `npm run dev:api` | Where the API finds the transcriber. Unset: voice messages are stored but not transcribed. |
+| `RELAY_TRANSCRIBER_LANGUAGE` | the service default, `pt` | Language code for Whisper, or `auto` to detect it. |
+| `RELAY_MEDIA_DIR` | `media` next to the database | Where voice messages are stored. |
+
+### Measured times
+
+Measured on a laptop CPU (12th Gen Intel Core i5-1235U; the benchmark prints `Intel64 Family 6 Model 154`) with a 10-second English sample made with the Windows speech synthesizer: `int8`, `beam_size=1`, language detection on, after one warm-up run. Load times are with the model already downloaded. Reproduce with `python -m transcriber.bench <audio> tiny base small --language auto`.
+
+| Model | Audio | Load | Transcription |
+| --- | --- | --- | --- |
+| `tiny` | 10.2 s | 0.8 s | 1.0 s |
+| `base` | 10.2 s | 0.6 s | 4.4 s |
+| `small` | 10.2 s | 1.6 s | 6.2 s |
+
+### Running the transcriber without Docker
+
+```bash
+cd services/transcriber
+python -m venv .venv-run                      # Python 3.12 recommended
+.venv-run/Scripts/python -m pip install -r requirements.txt   # Linux/macOS: .venv-run/bin/python
+TRANSCRIBER_MODEL=tiny .venv-run/Scripts/python -m transcriber   # listens on 127.0.0.1:8000
+```
+
+Then start the API with `TRANSCRIBER_URL=http://127.0.0.1:8000 npm run dev:api`. The service tests need only pytest (a fake model stands in for Whisper): `python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.txt && .venv/Scripts/python -m pytest`.
+
 ## Architecture
 
 - `apps/api` — Fastify + TypeScript, SQLite (Drizzle), WebSocket for the widget and the inbox.
@@ -64,13 +100,15 @@ Notes:
 
 ## Roadmap
 
-Local Whisper transcription · WhatsApp connector · i18n (EN/PT).
+WhatsApp connector · i18n (EN/PT).
 
 ## Em português
 
 Relay é uma inbox de atendimento omnichannel, open source, com agente de IA e transcrição de áudio local. Rode com `docker compose up --build` e abra a inbox e a página `/demo` lado a lado. Sem configuração, o agente responde com um provedor de demonstração roteirizado (sem chave de API), consulta a base de conhecimento e transfere para um humano quando necessário.
 
 Para usar um modelo de verdade, defina `ANTHROPIC_API_KEY` (Claude) ou `OLLAMA_URL` (modelo local com Ollama) — copie `.env.example` para `.env`. Sem nada configurado, continua o provedor de demonstração. Se o provedor falhar (limite de uso, tempo esgotado, servidor fora do ar), a conversa vai para um atendente humano.
+
+Mensagens de voz: o cliente grava um áudio no widget e um serviço Python local (`services/transcriber`, faster-whisper) transcreve o áudio sem enviá-lo para fora do servidor. A inbox mostra o player com a transcrição embaixo, e o agente responde a partir do texto. Se a transcrição falhar, o agente responde mesmo assim; se o serviço estiver fora do ar, o áudio é transcrito quando ele voltar. O modelo padrão é o `small` (troque com `TRANSCRIBER_MODEL`).
 
 ## License
 
