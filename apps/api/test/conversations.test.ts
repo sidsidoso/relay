@@ -95,8 +95,8 @@ describe('outbound path and status rules', () => {
   it('postOutbound stores an agent message, applies changes atomically and delivers it', async () => {
     const { conversation } = receiveInbound(deps, hello)
     const events: string[] = []
-    deps.bus.on('message.created', () => events.push('message.created'))
-    deps.bus.on('conversation.updated', () => events.push('conversation.updated'))
+    deps.bus.on('message.created', () => { events.push('message.created') })
+    deps.bus.on('conversation.updated', () => { events.push('conversation.updated') })
     const msg = await postOutbound(deps, conversation.id, { sender: 'agent', text: 'Hello from the agent' }, { agentTurns: 1 })
     expect(msg).toMatchObject({ sender: 'agent', userId: null, text: 'Hello from the agent' })
     expect(getConversation(deps, conversation.id)!.conversation.agentTurns).toBe(1)
