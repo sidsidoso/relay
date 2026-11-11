@@ -113,7 +113,12 @@ export async function runAgentTurn(deps: EngineDeps, conversationId: number): Pr
         return log('replied')
       }
 
-      chat.push({ role: 'assistant', content: result.text ?? '', toolCalls: result.calls })
+      chat.push({
+        role: 'assistant',
+        content: result.text ?? '',
+        toolCalls: result.calls,
+        ...(result.raw !== undefined ? { raw: result.raw } : {}),
+      })
       for (const call of result.calls) {
         if (call.name === 'transfer_to_human') {
           const reason = typeof call.input.reason === 'string' && call.input.reason.trim() ? call.input.reason.trim() : 'The agent asked for a human'
