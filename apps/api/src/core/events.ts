@@ -1,9 +1,10 @@
 import { EventEmitter } from 'node:events'
-import type { Conversation, Message } from './types'
+import type { AgentRun, Conversation, Message } from './types'
 
 export type RelayEvents = {
   'message.created': { conversationId: number; message: Message }
   'conversation.updated': { conversation: Conversation }
+  'agent.run.created': { conversationId: number; run: AgentRun }
 }
 
 type Listener<K extends keyof RelayEvents> = (data: RelayEvents[K]) => void

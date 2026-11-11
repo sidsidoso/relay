@@ -1,4 +1,4 @@
-import type { contacts, conversations, messages } from '../db/schema'
+import type { agentRuns, contacts, conversations, messages } from '../db/schema'
 
 export type Message = typeof messages.$inferSelect
 export type Conversation = typeof conversations.$inferSelect
@@ -8,3 +8,5 @@ export type ConversationSummary = Conversation & {
   lastMessage: string | null
   assigneeName: string | null
 }
+
+export type AgentRun = typeof agentRuns.$inferSelect
