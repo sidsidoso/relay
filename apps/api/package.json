@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@fastify/cookie": "^11.1.5",
     "@fastify/websocket": "^11.3.7",
     "better-sqlite3": "^13.0.3",

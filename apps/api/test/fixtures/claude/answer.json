@@ -1,0 +1,25 @@
+{
+  "id": "msg_01RelayFixtureAnswer0000001",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-sonnet-5-5",
+  "content": [
+    { "type": "thinking", "thinking": "", "signature": "EqQBCkYIBhgCKkCrelayFixtureSignatureAnswer00001" },
+    {
+      "type": "text",
+      "text": "A meeting room costs $20 per hour. The small room seats 4 people and the large one seats 8. You can book at the front desk or by message.",
+      "citations": null
+    }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "stop_details": null,
+  "container": null,
+  "usage": {
+    "input_tokens": 1040,
+    "output_tokens": 48,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "service_tier": "standard"
+  }
+}
