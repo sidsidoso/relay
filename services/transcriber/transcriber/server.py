@@ -42,9 +42,17 @@ def make_server(
                 {"ok": engine.error is None, "model": engine.model_name, "loaded": engine.loaded, "error": engine.error},
             )
 
+        def _drain(self) -> None:
+            """Reads and discards a body of acceptable size, so closing the socket does not reset the connection
+            before the client reads the answer (Windows sends RST when unread data is left)."""
+            raw = (self.headers.get("Content-Length") or "").strip()
+            if _LENGTH.match(raw) and int(raw) <= max_body:
+                self.rfile.read(int(raw))
+
         def do_POST(self) -> None:
             # Every early answer closes the connection: the unread body must not be parsed as a new request.
             if self.path != "/transcribe":
+                self._drain()
                 return self._send(404, {"error": "not_found"}, close=True)
             raw = self.headers.get("Content-Length")
             if raw is None:
@@ -58,8 +66,10 @@ def make_server(
                 return self._send(413, {"error": "too_large"}, close=True)
             language = (self.headers.get("X-Language") or default_language).strip().lower()
             if not _LANGUAGE.match(language):
+                self._drain()
                 return self._send(400, {"error": "invalid_language"}, close=True)
             if not engine.loaded:
+                self._drain()
                 return self._send(503, {"error": "model_failed" if engine.error else "loading"}, close=True)
             audio = self.rfile.read(length)
             if len(audio) < length:
