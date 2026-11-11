@@ -1,0 +1,12 @@
+services:
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    volumes: [relay-data:/data]
+    restart: unless-stopped
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    ports: ["8080:80"]
+    depends_on: [api]
+    restart: unless-stopped
+volumes:
+  relay-data:
