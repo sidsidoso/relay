@@ -8,7 +8,7 @@ import { ChannelRegistry } from './channels/types'
 import { WidgetChannel } from './channels/widget'
 import { WhatsAppChannel } from './channels/whatsapp'
 import { buildServer } from './server'
-import { selectProvider } from './agent/providers'
+import { agentTimeoutMs, selectProvider } from './agent/providers'
 import { loadKnowledge } from './agent/knowledge'
 import { runAgentTurn } from './agent/engine'
 import { AgentQueue } from './agent/queue'
@@ -25,11 +25,12 @@ channels.register(widget)
 channels.register(new WhatsAppChannel())
 
 const provider = selectProvider(process.env)
+const timeoutMs = agentTimeoutMs(process.env, provider)
 const knowledgeDir = process.env.RELAY_KNOWLEDGE_DIR ?? fileURLToPath(new URL('../knowledge', import.meta.url))
 const knowledge = loadKnowledge(knowledgeDir)
-const queue = new AgentQueue((id) => runAgentTurn({ db, bus, channels, provider, knowledge: () => knowledge }, id), bus)
+const queue = new AgentQueue((id) => runAgentTurn({ db, bus, channels, provider, knowledge: () => knowledge, timeoutMs }, id), bus)
 queue.start()
-console.log(`[relay] agent provider: ${provider.id} (${provider.model ?? 'n/a'}), knowledge passages: ${knowledge.length}`)
+console.log(`[relay] agent provider: ${provider.id} (${provider.model ?? 'n/a'}), timeout ${timeoutMs} ms, knowledge passages: ${knowledge.length}`)
 
 const app = await buildServer({ db, bus, channels }, { widget })
 const port = Number(process.env.PORT ?? 3000)
