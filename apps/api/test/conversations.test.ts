@@ -5,7 +5,7 @@ import { EventBus } from '../src/core/events'
 import { ChannelRegistry, type Channel } from '../src/channels/types'
 import {
   receiveInbound, listConversations, getConversation, assign, handBack, close, teamReply,
-  historyForContact, NotFoundError, type CoreDeps,
+  historyForContact, NotFoundError, ConflictError, postOutbound, addTags, type CoreDeps,
 } from '../src/core/conversations'
 
 let deps: CoreDeps
@@ -88,5 +88,69 @@ describe('inbox actions', () => {
   it('unknown conversation throws NotFoundError', () => {
     expect(() => assign(deps, 999, 1)).toThrow(NotFoundError)
     expect(getConversation(deps, 999)).toBeNull()
+  })
+})
+
+describe('outbound path and status rules', () => {
+  it('postOutbound stores an agent message, applies changes atomically and delivers it', async () => {
+    const { conversation } = receiveInbound(deps, hello)
+    const events: string[] = []
+    deps.bus.on('message.created', () => events.push('message.created'))
+    deps.bus.on('conversation.updated', () => events.push('conversation.updated'))
+    const msg = await postOutbound(deps, conversation.id, { sender: 'agent', text: 'Hello from the agent' }, { agentTurns: 1 })
+    expect(msg).toMatchObject({ sender: 'agent', userId: null, text: 'Hello from the agent' })
+    expect(getConversation(deps, conversation.id)!.conversation.agentTurns).toBe(1)
+    expect(events).toEqual(['message.created', 'conversation.updated'])
+    expect(sent).toHaveBeenCalledTimes(1)
+  })
+
+  it('a delivery failure is logged, not thrown, and the message stays stored once', async () => {
+    const { conversation } = receiveInbound(deps, hello)
+    sent.mockRejectedValueOnce(new Error('socket gone'))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      await expect(postOutbound(deps, conversation.id, { sender: 'agent', text: 'x' })).resolves.toMatchObject({ text: 'x' })
+      expect(spy).toHaveBeenCalledWith('[relay] delivery failed', 'widget', expect.any(Error))
+      expect(getConversation(deps, conversation.id)!.messages.filter((m) => m.text === 'x')).toHaveLength(1)
+    } finally { spy.mockRestore() }
+  })
+
+  it('replying to or assigning a closed conversation is a 409-style ConflictError', async () => {
+    const { conversation } = receiveInbound(deps, hello)
+    close(deps, conversation.id)
+    await expect(teamReply(deps, conversation.id, 1, 'late')).rejects.toBeInstanceOf(ConflictError)
+    expect(() => assign(deps, conversation.id, 1)).toThrow(ConflictError)
+  })
+
+  it('handBack resets the agent turn counter and clears the handoff reason', async () => {
+    const { conversation } = receiveInbound(deps, hello)
+    await postOutbound(deps, conversation.id, { sender: 'agent', text: 'a' }, { agentTurns: 7, status: 'waiting_human', handoffReason: 'r' })
+    assign(deps, conversation.id, 1)
+    expect(handBack(deps, conversation.id)).toMatchObject({ agentTurns: 0, handoffReason: null, status: 'open' })
+  })
+
+  it('addTags merges, normalizes and caps tags', () => {
+    const { conversation } = receiveInbound(deps, hello)
+    addTags(deps, conversation.id, ['Pricing', ' pricing ', 'virtual-office', ''])
+    const c = addTags(deps, conversation.id, ['x'.repeat(31), 'meeting-room'])
+    expect(c.tags).toEqual(['pricing', 'virtual-office', 'meeting-room'])
+  })
+
+  it('NotFoundError for close, handBack, addTags and teamReply on an unknown id', async () => {
+    expect(() => close(deps, 999)).toThrow(NotFoundError)
+    expect(() => handBack(deps, 999)).toThrow(NotFoundError)
+    expect(() => addTags(deps, 999, ['a'])).toThrow(NotFoundError)
+    await expect(teamReply(deps, 999, 1, 'x')).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('an audio message without text is listed as [audio]', () => {
+    receiveInbound(deps, { channel: 'widget', contactKey: 'v-9', type: 'audio', mediaPath: 'a.webm', mediaMime: 'audio/webm' })
+    expect(listConversations(deps, {})[0]!.lastMessage).toBe('[audio]')
+  })
+
+  it('an inbound message updates the contact name', () => {
+    receiveInbound(deps, hello)
+    const { conversation } = receiveInbound(deps, { ...hello, contactName: 'Ana Maria' })
+    expect(getConversation(deps, conversation.id)!.contact.name).toBe('Ana Maria')
   })
 })

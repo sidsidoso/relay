@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { testServer } from './helpers'
 import { receiveInbound } from '../src/core/conversations'
+import { recordRun } from '../src/agent/runs'
 
 const hello = { channel: 'widget' as const, contactKey: 'v-1', contactName: 'Ana', type: 'text' as const, text: 'Hi!' }
 
@@ -53,5 +54,31 @@ describe('inbox routes', () => {
     expect(empty.statusCode).toBe(400)
     const bad = await app.inject({ method: 'GET', url: '/api/conversations?status=nope', headers: { cookie } })
     expect(bad.statusCode).toBe(400)
+  })
+
+  it('replying to or assigning a closed conversation answers 409 conversation_closed', async () => {
+    const { app, deps, login } = await testServer()
+    const cookie = await login()
+    const { conversation } = receiveInbound(deps, hello)
+    await app.inject({ method: 'POST', url: `/api/conversations/${conversation.id}/close`, headers: { cookie } })
+    const assign = await app.inject({ method: 'POST', url: `/api/conversations/${conversation.id}/assign`, headers: { cookie } })
+    expect(assign.statusCode).toBe(409)
+    const res = await app.inject({ method: 'POST', url: `/api/conversations/${conversation.id}/messages`, headers: { cookie }, payload: { text: 'late' } })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'Conversation is closed', code: 'conversation_closed' })
+  })
+
+  it('lists agent runs for a conversation, newest first; 404 for unknown; 401 without a session', async () => {
+    const { app, deps, login } = await testServer()
+    const cookie = await login()
+    const { conversation } = receiveInbound(deps, hello)
+    recordRun(deps, { conversationId: conversation.id, provider: 'demo', model: 'scripted', durationMs: 5, inputTokens: null, outputTokens: null, outcome: 'replied', error: null })
+    recordRun(deps, { conversationId: conversation.id, provider: 'demo', model: 'scripted', durationMs: 7, inputTokens: null, outputTokens: null, outcome: 'transferred', error: null })
+    const res = await app.inject({ method: 'GET', url: `/api/conversations/${conversation.id}/agent-runs`, headers: { cookie } })
+    expect(res.json().runs.map((r: { outcome: string }) => r.outcome)).toEqual(['transferred', 'replied'])
+    const missing = await app.inject({ method: 'GET', url: '/api/conversations/999/agent-runs', headers: { cookie } })
+    expect(missing.statusCode).toBe(404)
+    const anon = await app.inject({ method: 'GET', url: `/api/conversations/${conversation.id}/agent-runs` })
+    expect(anon.statusCode).toBe(401)
   })
 })

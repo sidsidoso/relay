@@ -2,14 +2,20 @@
 
 Findings from the plan-1 reviews that were deliberately deferred. Each later plan should pull its items into its own tasks.
 
-## Plan 2 — agent engine
-- Wrap multi-step writes (`receiveInbound`, `teamReply`, agent replies) in `db.transaction`.
-- Generalise `teamReply` into an outbound path that takes the sender (`user` | `agent` | `system`); define what happens when `channel.send` rejects after the insert (no duplicate on retry).
-- Status rules: replying to or assigning a closed conversation answers 409 instead of reopening it; `handBack` resets `agentTurns`.
-- Debounce the inbox list refetch (today one GET per frame) — the agent doubles event volume.
-- Type the WebSocket frames (`frame: any` in `live.ts`) when agent events are added.
-- Graceful shutdown that waits for in-flight agent turns.
-- Rewrite/extend conversation-service tests (NotFound on close/handBack/teamReply, `[audio]` fallback, `handoffReason` cleared, event order, contact name update).
+## Done in plan 2
+- Multi-step writes (`receiveInbound`, outbound messages, agent replies) run in `db.transaction`.
+- One outbound path, `postOutbound`, for `user` | `agent` | `system`; a rejected `channel.send` is logged and the stored message is never duplicated.
+- Status rules: replying to or assigning a closed conversation answers 409 `conversation_closed`; `handBack` resets `agentTurns`.
+- Inbox list refetch triggered by live frames is debounced (at most one request per 300 ms).
+- WebSocket frames are typed (`connectLive<F>`, `InboxFrame`, widget frame union).
+- Graceful shutdown on SIGINT/SIGTERM waits for in-flight agent turns.
+- Conversation-service tests extended (NotFound on close/handBack/teamReply/addTags, `[audio]` fallback, `handoffReason` cleared, event order, contact name update).
+- Spec §6 channel contract updated.
+- Typed settings for the agent keys (`agentSettings`); the generic settings API is still plan 4.
+
+## Found during plan 2 (for later)
+- The default handoff keyword `agent` is a whole-word match, so "real estate agent" hands off too; revisit the defaults with the settings UI (plan 4).
+- The demo provider only reads the first search hit; real providers (plan 3) get all passages.
 
 ## Plan 4 — settings and knowledge base
 - Typed settings instead of `Record<string, unknown>`.
@@ -34,8 +40,6 @@ Findings from the plan-1 reviews that were deliberately deferred. Each later pla
 - `verifyPassword`: return false on an empty key; switch `z.string().email()` to `z.email()`; validate `PORT`.
 - Tests: session expiry and cookie attributes, 404 on every conversation action, 401 on get/reply/act in the inbox, stale list/filter guard, close-listener races in WebSocket tests, restore spies in `finally`, close apps in tests, Playwright end-to-end (spec §11).
 
-## Spec update
-- Spec §6 still shows `send(conversation, OutgoingMessage)`; the implemented contract is `send({ conversation, contact }, message)`. Update the spec before plan 2.
 
 ## Small hardening (any plan)
 - `EventBus.on`: ignore or track a second registration of the same function (today `off` removes only the latest wrapper); use `Promise.resolve(result).catch` to also catch non-native thenables; type `Listener` as `void | Promise<void>`.

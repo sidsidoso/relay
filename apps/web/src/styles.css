@@ -40,3 +40,10 @@ input { font: inherit; padding: 8px; border: 1px solid var(--line); border-radiu
 .w-msg { max-width: 80%; padding: 6px 10px; border-radius: 10px; }
 .w-me { align-self: flex-end; background: var(--accent); color: #fff; } .w-them { align-self: flex-start; background: var(--bg); }
 .widget-form { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); } .widget-form input { flex: 1; }
+
+.runs { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.run { display: grid; gap: 2px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; }
+.run span, .run time { color: var(--muted); }
+.run-failed { border-color: #dc2626; }
+.run-transferred { border-color: var(--warn); }
+.run-error { color: #dc2626 !important; }

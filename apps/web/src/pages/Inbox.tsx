@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, ApiError, type Contact, type Conversation, type ConversationSummary, type Filter, type Message, type User } from '../api'
+import { api, ApiError, type AgentRun, type Contact, type Conversation, type ConversationSummary, type Filter, type InboxFrame, type Message, type User } from '../api'
 import { connectLive } from '../live'
 import { ConversationList } from '../components/ConversationList'
 import { Timeline } from '../components/Timeline'
+import { AgentActivity } from '../components/AgentActivity'
+
+/** Live frames refresh the list at most once per this many ms (the agent roughly doubles event volume). */
+const LIST_REFRESH_MS = 300
 
 const FILTERS: Array<[Filter, string]> = [['all', 'All'], ['waiting_human', 'Waiting for human'], ['mine', 'Mine'], ['closed', 'Closed']]
 
@@ -11,6 +15,7 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
   const [items, setItems] = useState<ConversationSummary[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [detail, setDetail] = useState<{ conversation: Conversation; contact: Contact; messages: Message[] } | null>(null)
+  const [runs, setRuns] = useState<AgentRun[]>([])
   const [draft, setDraft] = useState('')
   const [replyError, setReplyError] = useState(false)
   const [actionError, setActionError] = useState(false)
@@ -42,8 +47,15 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
     const id = selectedId
     if (!id) return
     try {
-      const d = await api.get(id)
-      if (selectedRef.current === id) setDetail(d)
+      const [d, r] = await Promise.all([
+        api.get(id),
+        // Runs are secondary: if they fail to load (other than 401) the conversation still opens.
+        api.agentRuns(id).catch((err: unknown) => {
+          if (err instanceof ApiError && err.status === 401) throw err
+          return { runs: [] as AgentRun[] }
+        }),
+      ])
+      if (selectedRef.current === id) { setDetail(d); setRuns(r.runs) }
     } catch (err) { expired(err) }
   }, [selectedId, expired])
 
@@ -53,24 +65,40 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
   const refreshRef = useRef({ refreshList, refreshDetail })
   refreshRef.current = { refreshList, refreshDetail }
 
-  useEffect(() => connectLive('/ws/inbox', (frame) => {
-    void refreshRef.current.refreshList()
+  const listTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (listTimer.current) clearTimeout(listTimer.current) }, [])
+  const scheduleListRefresh = useCallback(() => {
+    if (listTimer.current) return
+    listTimer.current = setTimeout(() => {
+      listTimer.current = null
+      void refreshRef.current.refreshList()
+    }, LIST_REFRESH_MS)
+  }, [])
+
+  useEffect(() => connectLive<InboxFrame>('/ws/inbox', (frame) => {
+    scheduleListRefresh()
     const current = selectedRef.current
     if (frame.event === 'message.created' && frame.data.conversationId === current) {
       setDetail((d) => d && d.conversation.id === frame.data.conversationId && !d.messages.some((m) => m.id === frame.data.message.id)
         ? { ...d, messages: [...d.messages, frame.data.message] } : d)
     }
     if (frame.event === 'conversation.updated' && frame.data.conversation.id === current) {
-      setDetail((d) => d && d.conversation.id === frame.data.conversation.id ? { ...d, conversation: frame.data.conversation } : d)
+      const { conversation } = frame.data
+      setDetail((d) => d && d.conversation.id === conversation.id ? { ...d, conversation } : d)
+    }
+    if (frame.event === 'agent.run.created' && frame.data.conversationId === current) {
+      const { run } = frame.data
+      setRuns((rs) => rs.some((x) => x.id === run.id) ? rs : [run, ...rs])
     }
   }, () => { void refreshRef.current.refreshList(); void refreshRef.current.refreshDetail() },
-  (code) => { if (code === 4401) onLogoutRef.current() }).stop, [])
+  (code) => { if (code === 4401) onLogoutRef.current() }).stop, [scheduleListRefresh])
 
   function select(id: number) {
     if (id === selectedRef.current) return
     selectedRef.current = id
     setSelectedId(id)
     setDetail(null)
+    setRuns([])
     setDraft('')
     setReplyError(false)
     setActionError(false)
@@ -161,6 +189,8 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
             <p className="muted">Channel: {detail.contact.channel}</p>
             <h3>Tags</h3>
             <p className="muted">{conv?.tags.length ? conv.tags.join(', ') : 'None'}</p>
+            <h3>Agent activity</h3>
+            <AgentActivity runs={runs} />
           </>
         )}
       </aside>

@@ -4,7 +4,7 @@ import { vi } from 'vitest'
 
 vi.mock('../src/api', async (orig) => {
   const actual = await orig<typeof import('../src/api')>()
-  return { ...actual, api: { list: vi.fn(), get: vi.fn(), reply: vi.fn(), assign: vi.fn(), handBack: vi.fn(), close: vi.fn(), logout: vi.fn() } }
+  return { ...actual, api: { list: vi.fn(), get: vi.fn(), reply: vi.fn(), assign: vi.fn(), handBack: vi.fn(), close: vi.fn(), logout: vi.fn(), agentRuns: vi.fn() } }
 })
 vi.mock('../src/live', () => ({ connectLive: vi.fn(() => ({ stop: vi.fn(), send: vi.fn() })) }))
 
@@ -29,6 +29,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocked.list.mockResolvedValue({ conversations: [summary(1, 'Ana'), summary(2, 'Bob')] })
   mocked.get.mockImplementation(async (id: number) => detail(id, id === 1 ? 'Ana' : 'Bob'))
+  mocked.agentRuns.mockResolvedValue({ runs: [] })
+})
+
+const agentRun = (id: number, outcome: 'replied' | 'transferred' | 'failed') => ({
+  id, conversationId: 1, provider: 'demo', model: 'scripted', durationMs: 5, inputTokens: null, outputTokens: null, outcome, error: null, createdAt: '2026-11-10T12:00:00Z',
 })
 
 async function openFirst(onLogout = vi.fn()) {
@@ -109,5 +114,36 @@ describe('Inbox', () => {
     await act(async () => { resolveFirst(detail(1, 'Ana')) })
     expect(screen.queryByText('hi from Ana')).toBeNull()
     expect(screen.getByText('hi from Bob')).toBeInTheDocument()
+  })
+
+  it('shows agent runs and adds live ones for the open conversation, without duplicates', async () => {
+    mocked.agentRuns.mockResolvedValue({ runs: [agentRun(1, 'replied')] })
+    await openFirst()
+    expect(await screen.findByText('Replied')).toBeInTheDocument()
+    const onFrame = vi.mocked(connectLive).mock.calls[0]![1] as (f: unknown) => void
+    act(() => onFrame({ event: 'agent.run.created', data: { conversationId: 1, run: agentRun(2, 'transferred') } }))
+    act(() => onFrame({ event: 'agent.run.created', data: { conversationId: 1, run: agentRun(2, 'transferred') } }))
+    act(() => onFrame({ event: 'agent.run.created', data: { conversationId: 2, run: { ...agentRun(3, 'failed'), conversationId: 2 } } }))
+    expect(await screen.findAllByText('Handed off')).toHaveLength(1)
+    expect(screen.queryByText('Failed')).toBeNull()
+  })
+
+  it('still opens the conversation when loading agent runs fails', async () => {
+    mocked.agentRuns.mockRejectedValue(new ApiError(500, 'error'))
+    await openFirst()
+    expect(await screen.findByText('No agent activity yet')).toBeInTheDocument()
+    expect(screen.getByText('hi from Ana')).toBeInTheDocument()
+  })
+
+  it('debounces list refreshes triggered by frames', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await openFirst()
+      const before = mocked.list.mock.calls.length
+      const onFrame = vi.mocked(connectLive).mock.calls[0]![1] as (f: unknown) => void
+      act(() => { for (let i = 0; i < 5; i++) onFrame({ event: 'conversation.updated', data: { conversation: conv(2) } }) })
+      await act(async () => { await vi.advanceTimersByTimeAsync(350) })
+      expect(mocked.list.mock.calls.length - before).toBe(1)
+    } finally { vi.useRealTimers() }
   })
 })

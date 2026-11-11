@@ -117,9 +117,11 @@ Every turn writes an `agent_runs` row: provider, model, duration, tokens (when r
 ```ts
 interface Channel {
   id: 'widget' | 'whatsapp'
-  send(conversation: Conversation, message: OutgoingMessage): Promise<void>
+  send(target: { conversation: Conversation; contact: Contact }, message: Message): Promise<void>
 }
 ```
+
+All outbound messages (team, agent, system) go through one core function, `postOutbound`, which stores the message, then delivers it; a delivery failure is logged and never creates a duplicate.
 
 Inbound messages are normalized to `{ channel, contactKey, type: 'text' | 'audio', text?, mediaPath? }` before they reach the core.
 

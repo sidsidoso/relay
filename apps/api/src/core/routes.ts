@@ -4,6 +4,7 @@ import { makeRequireUser } from '../auth/guard'
 import {
   assign, close, getConversation, handBack, listConversations, teamReply, NotFoundError, type CoreDeps,
 } from './conversations'
+import { listRuns } from '../agent/runs'
 
 const ListQuery = z.object({
   status: z.enum(['open', 'waiting_human', 'closed']).optional(),
@@ -43,5 +44,11 @@ export function conversationRoutes(app: FastifyInstance, deps: CoreDeps) {
     const { text } = ReplyBody.parse(req.body)
     const message = await teamReply(deps, id, req.user!.id, text)
     return reply.code(201).send({ message })
+  })
+
+  app.get('/api/conversations/:id/agent-runs', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = IdParams.parse(req.params)
+    if (!getConversation(deps, id)) return notFound(reply)
+    return { runs: listRuns(deps.db, id) }
   })
 }
