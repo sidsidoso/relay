@@ -1,0 +1,2 @@
+# Tests use a fake model: faster-whisper is not needed to run them.
+pytest>=8,<10
