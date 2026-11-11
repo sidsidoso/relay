@@ -16,8 +16,8 @@ Spec: `docs/superpowers/specs/2026-11-10-relay-design.md` §4 (providers, select
 - The `Provider` interface from plan 2 stays as it is, plus one optional opaque field (`raw`, Task 1). The engine stays provider-neutral: no `if (provider.id === ...)` inside `engine.ts`.
 - Selection order exactly: `RELAY_PROVIDER` if set (`claude` | `ollama` | `demo`, case-insensitive); otherwise Claude if `ANTHROPIC_API_KEY` is set, then Ollama if `OLLAMA_URL` is set, then demo. An empty or whitespace-only variable counts as unset (Docker Compose passes empty strings).
 - With no variables set, behavior is identical to plan 2 (demo provider, `docker compose up` works with no key).
-- Default Claude model `claude-opus-5-5` (override: `RELAY_CLAUDE_MODEL`). Default Ollama model `llama3.2` (override: `RELAY_OLLAMA_MODEL`). Never append a date suffix to a Claude model ID.
-- Claude requests: `max_tokens: 16000`, `output_config: { effort: 'low' }`, no `thinking`, `temperature`, `top_p`, `top_k` or `tool_choice` field (Opus 5.5 rejects disabled thinking, sampling parameters and forced tool choice). When the model calls a tool, the assistant turn is sent back with its content blocks unchanged (thinking blocks included).
+- Default Claude model `claude-sonnet-5-5` (override: `RELAY_CLAUDE_MODEL`). Default Ollama model `llama3.2` (override: `RELAY_OLLAMA_MODEL`). Never append a date suffix to a Claude model ID.
+- Claude requests: `max_tokens: 16000`, `output_config: { effort: 'low' }`, no `thinking`, `temperature`, `top_p`, `top_k` or `tool_choice` field (Sonnet 5.5 rejects `thinking: { type: 'disabled' }`, non-default sampling parameters and forced tool choice with a 400; omitting `thinking` runs adaptive thinking. Its effort default is `high`, so `low` — the recommended starting level for chat — is set explicitly. Verified against the `claude-api` skill on 2026-11-11.) When the model calls a tool, the assistant turn is sent back with its content blocks unchanged (thinking blocks included).
 - Tests never use the network and never need a key: every adapter test injects a fake `fetch` that replays fixtures from `apps/api/test/fixtures/`.
 - Provider failures throw `ProviderError` whose `message` starts with a stable code (`claude_rate_limited`, `claude_auth`, `claude_model_not_found`, `claude_timeout`, `claude_offline`, `claude_http_<status>`, `claude_refusal`, `claude_max_tokens`, `claude_model_context_window_exceeded`, `ollama_offline`, `ollama_model_not_found`, `ollama_http_<status>`). The engine (plan 2) records it in `agent_runs.error` (first 200 chars) and hands off.
 - API keys are never logged, stored, or put in error messages.
@@ -199,7 +199,7 @@ git commit -m "feat(api): ProviderError and opaque provider turns in the engine"
 **Interfaces:**
 - Consumes (Task 1): `ChatMessage`, `GenerateRequest`, `GenerateResult`, `Provider`, `ToolSpec`, `FetchLike`, `ProviderError`.
 - Produces (`providers/claude.ts`):
-  - `DEFAULT_CLAUDE_MODEL = 'claude-opus-5-5'`, `CLAUDE_MAX_TOKENS = 16_000`.
+  - `DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5'`, `CLAUDE_MAX_TOKENS = 16_000`.
   - `type ClaudeOptions = { apiKey: string; model?: string; maxRetries?: number; fetch?: FetchLike }` (`maxRetries` defaults to 2 — the SDK retries 408/409/429/5xx and connection errors; the engine timeout still bounds the whole call).
   - `class ClaudeProvider implements Provider` — `id: 'claude'`, `model` = option or default. `generate` returns `text`, or `tool_calls` with `raw` = the response `content` array.
   - `toAnthropicMessages(messages: ChatMessage[]): Anthropic.MessageParam[]` — rules: leading non-`user` messages are dropped (the API needs a user message first); an empty user message becomes `'[empty message]'`; an assistant message with `raw` is sent as `raw` unchanged; an assistant message with tool calls becomes `[text block if non-empty, ...tool_use blocks]`; a plain assistant message is sent as its string, or dropped when empty; consecutive `tool` messages become ONE user message of `tool_result` blocks.
@@ -246,7 +246,7 @@ export const fixture = (path: string): any =>
   JSON.parse(readFileSync(new URL(`./fixtures/${path}`, import.meta.url), 'utf8'))
 ```
 
-The fixtures are Messages API responses in the shape the API returns for `claude-opus-5-5` (adaptive thinking with the default `display: "omitted"`, so thinking text is empty and only the signature is meaningful). Write them exactly:
+The fixtures are Messages API responses in the shape the API returns for `claude-sonnet-5-5` (adaptive thinking with the default `display: "omitted"`, so thinking text is empty and only the signature is meaningful). Write them exactly:
 
 `apps/api/test/fixtures/claude/tool-use.json`:
 ```json
@@ -254,7 +254,7 @@ The fixtures are Messages API responses in the shape the API returns for `claude
   "id": "msg_01RelayFixtureToolUse000001",
   "type": "message",
   "role": "assistant",
-  "model": "claude-opus-5-5",
+  "model": "claude-sonnet-5-5",
   "content": [
     { "type": "thinking", "thinking": "", "signature": "EqQBCkYIBhgCKkCrelayFixtureSignatureToolUse0001" },
     { "type": "text", "text": "Let me check our prices.", "citations": null },
@@ -286,7 +286,7 @@ The fixtures are Messages API responses in the shape the API returns for `claude
   "id": "msg_01RelayFixtureAnswer0000001",
   "type": "message",
   "role": "assistant",
-  "model": "claude-opus-5-5",
+  "model": "claude-sonnet-5-5",
   "content": [
     { "type": "thinking", "thinking": "", "signature": "EqQBCkYIBhgCKkCrelayFixtureSignatureAnswer00001" },
     {
@@ -315,7 +315,7 @@ The fixtures are Messages API responses in the shape the API returns for `claude
   "id": "msg_01RelayFixtureRefusal000001",
   "type": "message",
   "role": "assistant",
-  "model": "claude-opus-5-5",
+  "model": "claude-sonnet-5-5",
   "content": [],
   "stop_reason": "refusal",
   "stop_sequence": null,
@@ -331,7 +331,7 @@ The fixtures are Messages API responses in the shape the API returns for `claude
   "id": "msg_01RelayFixtureMaxTokens00001",
   "type": "message",
   "role": "assistant",
-  "model": "claude-opus-5-5",
+  "model": "claude-sonnet-5-5",
   "content": [{ "type": "text", "text": "Our plans are", "citations": null }],
   "stop_reason": "max_tokens",
   "stop_sequence": null,
@@ -394,7 +394,7 @@ describe('ClaudeProvider', () => {
     expect(requests[0]!.url).toMatch(/\/v1\/messages$/)
     const body = requests[0]!.body
     expect(body).toMatchObject({
-      model: 'claude-opus-5-5',
+      model: 'claude-sonnet-5-5',
       max_tokens: CLAUDE_MAX_TOKENS,
       system: 'You are the Acme assistant.',
       output_config: { effort: 'low' },
@@ -405,10 +405,10 @@ describe('ClaudeProvider', () => {
   })
 
   it('uses the configured model and omits tools when there are none', async () => {
-    const { p, requests } = provider([{ body: fixture('claude/answer.json') }], 'claude-sonnet-5-5')
+    const { p, requests } = provider([{ body: fixture('claude/answer.json') }], 'claude-opus-5-5')
     await p.generate({ system: 's', messages: [{ role: 'user', content: 'hi' }], tools: [] })
-    expect(p.model).toBe('claude-sonnet-5-5')
-    expect(requests[0]!.body.model).toBe('claude-sonnet-5-5')
+    expect(p.model).toBe('claude-opus-5-5')
+    expect(requests[0]!.body.model).toBe('claude-opus-5-5')
     expect(requests[0]!.body).not.toHaveProperty('tools')
   })
 
@@ -508,7 +508,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { ProviderError } from './errors'
 import type { ChatMessage, FetchLike, GenerateRequest, GenerateResult, Provider, ToolCall, ToolSpec } from './types'
 
-export const DEFAULT_CLAUDE_MODEL = 'claude-opus-5-5'
+export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5'
 /** Room for adaptive thinking plus a short chat answer; non-streaming requests stay well under SDK timeouts. */
 export const CLAUDE_MAX_TOKENS = 16_000
 const EMPTY_MESSAGE = '[empty message]'
@@ -590,7 +590,7 @@ export class ClaudeProvider implements Provider {
       system,
       messages: toAnthropicMessages(messages),
       ...(tools.length ? { tools: tools.map(toAnthropicTool) } : {}),
-      // Short support answers: low effort keeps latency and cost down; thinking stays adaptive (Opus 5.5 cannot disable it).
+      // Short support answers: low effort keeps latency and cost down; thinking stays adaptive (Sonnet 5.5 rejects disabled thinking; its effort default is high).
       output_config: { effort: 'low' },
     }
     let res: Anthropic.Message
@@ -1002,8 +1002,8 @@ describe('selectProvider', () => {
   })
 
   it('auto-selects Claude when there is a key, then Ollama when there is a URL', () => {
-    expect(selectProvider({ ANTHROPIC_API_KEY: 'k' })).toMatchObject({ id: 'claude', model: 'claude-opus-5-5' })
-    expect(selectProvider({ ANTHROPIC_API_KEY: 'k', RELAY_CLAUDE_MODEL: ' claude-sonnet-5-5 ' })).toMatchObject({ id: 'claude', model: 'claude-sonnet-5-5' })
+    expect(selectProvider({ ANTHROPIC_API_KEY: 'k' })).toMatchObject({ id: 'claude', model: 'claude-sonnet-5-5' })
+    expect(selectProvider({ ANTHROPIC_API_KEY: 'k', RELAY_CLAUDE_MODEL: ' claude-opus-5-5 ' })).toMatchObject({ id: 'claude', model: 'claude-opus-5-5' })
     expect(selectProvider({ OLLAMA_URL: 'http://ollama:11434' })).toMatchObject({ id: 'ollama', model: 'llama3.2' })
     expect(selectProvider({ OLLAMA_URL: 'http://ollama:11434', RELAY_OLLAMA_MODEL: 'qwen3:4b' })).toMatchObject({ id: 'ollama', model: 'qwen3:4b' })
     expect(selectProvider({ ANTHROPIC_API_KEY: 'k', OLLAMA_URL: 'http://ollama:11434' }).id).toBe('claude')
@@ -1011,7 +1011,7 @@ describe('selectProvider', () => {
 
   it('treats empty or blank variables as unset (Docker Compose passes empty strings)', () => {
     expect(selectProvider({ RELAY_PROVIDER: '', ANTHROPIC_API_KEY: '  ', OLLAMA_URL: '' }).id).toBe('demo')
-    expect(selectProvider({ ANTHROPIC_API_KEY: 'k', RELAY_CLAUDE_MODEL: '' }).model).toBe('claude-opus-5-5')
+    expect(selectProvider({ ANTHROPIC_API_KEY: 'k', RELAY_CLAUDE_MODEL: '' }).model).toBe('claude-sonnet-5-5')
   })
 
   it('RELAY_PROVIDER wins, case-insensitively', () => {
@@ -1113,7 +1113,7 @@ describe('agent turns over recorded provider responses', () => {
     expect(sent.map((p) => p.title)).toEqual(searchKnowledge(KB, 'meeting room price').map((p) => p.title))
 
     expect(listRuns(deps.db, id)[0]).toMatchObject({
-      provider: 'claude', model: 'claude-opus-5-5', outcome: 'replied', inputTokens: 912 + 1040, outputTokens: 64 + 48, error: null,
+      provider: 'claude', model: 'claude-sonnet-5-5', outcome: 'replied', inputTokens: 912 + 1040, outputTokens: 64 + 48, error: null,
     })
   })
 
@@ -1394,7 +1394,7 @@ RELAY_PROVIDER=
 
 # Claude (Anthropic API). The conversation history and knowledge passages are sent to the API.
 ANTHROPIC_API_KEY=
-# Default: claude-opus-5-5
+# Default: claude-sonnet-5-5
 RELAY_CLAUDE_MODEL=
 
 # Ollama (local models; nothing leaves your machine). From Docker use http://host.docker.internal:11434
@@ -1432,7 +1432,7 @@ With Docker, copy `.env.example` to `.env` and fill in what you need; for `npm r
 | --- | --- | --- |
 | `RELAY_PROVIDER` | automatic | Force `claude`, `ollama` or `demo`. |
 | `ANTHROPIC_API_KEY` | — | Enables Claude (Anthropic Messages API, with tool use). |
-| `RELAY_CLAUDE_MODEL` | `claude-opus-5-5` | Claude model ID. |
+| `RELAY_CLAUDE_MODEL` | `claude-sonnet-5-5` | Claude model ID. |
 | `OLLAMA_URL` | — | Enables Ollama, e.g. `http://localhost:11434` (from Docker: `http://host.docker.internal:11434`). |
 | `RELAY_OLLAMA_MODEL` | `llama3.2` | Ollama model; run `ollama pull <model>` first. |
 | `RELAY_AGENT_TIMEOUT_MS` | `30000` (`120000` for Ollama) | Time limit for each model call. |
@@ -1463,7 +1463,7 @@ In `docs/superpowers/plans/followups-after-plan-1.md`:
 
 1. Demo still works with no configuration: start `npm run dev:api` and `npm run dev:web` in the background with no provider variables set; the API log shows `agent provider: demo (scripted), timeout 30000 ms`. Run the same widget check as plan 2 Task 7 (send "What are your opening hours?" through `ws://localhost:5173/ws/widget?token=<36+ char token>` and confirm an `agent` message containing "Opening hours" arrives). Stop both servers.
 2. Selection: `RELAY_PROVIDER=ollama OLLAMA_URL=http://127.0.0.1:9 npm run dev:api` → the log shows `agent provider: ollama (llama3.2), timeout 120000 ms`. Send one widget message; confirm the customer receives the handoff message and `GET /api/conversations/:id/agent-runs` (logged in as the demo user with `curl` and the cookie) lists a `failed` run whose `error` starts with `ollama_offline`. Stop the server.
-3. Live checks are optional and manual (they need a key or a running Ollama; never in CI): if `ANTHROPIC_API_KEY` is available, `npm run try-provider -w apps/api` prints a `search_knowledge` tool call or a short answer from `claude-opus-5-5`; if Ollama is running, `OLLAMA_URL=http://localhost:11434 npm run try-provider -w apps/api` does the same with `llama3.2`. Report which of these were run.
+3. Live checks are optional and manual (they need a key or a running Ollama; never in CI): if `ANTHROPIC_API_KEY` is available, `npm run try-provider -w apps/api` prints a `search_knowledge` tool call or a short answer from `claude-sonnet-5-5`; if Ollama is running, `OLLAMA_URL=http://localhost:11434 npm run try-provider -w apps/api` does the same with `llama3.2`. Report which of these were run.
 4. Delete the untracked `apps/api/data`.
 
 - [ ] **Step 5: Full suite and commit**
