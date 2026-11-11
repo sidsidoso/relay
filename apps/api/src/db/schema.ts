@@ -40,6 +40,7 @@ export type Transcription = {
   text?: string
   error?: string
   model?: string
+  durationS?: number
   at: string
 }
 

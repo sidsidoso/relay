@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 import type { Db } from '../db/client'
 import { settings } from '../db/schema'
@@ -21,4 +22,11 @@ export function agentSettings(db: Db): AgentSettings {
     out[field] = parsed.success ? parsed.data : DEFAULT_SETTINGS[key]
   }
   return out as AgentSettings
+}
+
+/** Spec §7 settings: transcription on/off. A missing or invalid stored value means on. */
+export function transcriptionEnabled(db: Db): boolean {
+  const row = db.select().from(settings).where(eq(settings.key, 'transcription.enabled')).get()
+  const parsed = z.boolean().safeParse(row?.value)
+  return parsed.success ? parsed.data : true
 }

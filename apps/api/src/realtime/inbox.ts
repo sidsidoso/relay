@@ -4,7 +4,7 @@ import type { RelayEvents } from '../core/events'
 import { SESSION_COOKIE } from '../auth/guard'
 import { userForSession } from '../auth/sessions'
 
-const EVENTS: Array<keyof RelayEvents> = ['message.created', 'conversation.updated', 'agent.run.created']
+const EVENTS: Array<keyof RelayEvents> = ['message.created', 'message.updated', 'conversation.updated', 'agent.run.created']
 
 export function inboxSocket(app: FastifyInstance, deps: CoreDeps) {
   app.get('/ws/inbox', { websocket: true }, (socket, req) => {
