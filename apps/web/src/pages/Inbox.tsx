@@ -82,6 +82,11 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
       setDetail((d) => d && d.conversation.id === frame.data.conversationId && !d.messages.some((m) => m.id === frame.data.message.id)
         ? { ...d, messages: [...d.messages, frame.data.message] } : d)
     }
+    if (frame.event === 'message.updated' && frame.data.conversationId === current) {
+      const { message } = frame.data
+      setDetail((d) => d && d.conversation.id === message.conversationId
+        ? { ...d, messages: d.messages.map((m) => (m.id === message.id ? message : m)) } : d)
+    }
     if (frame.event === 'conversation.updated' && frame.data.conversation.id === current) {
       const { conversation } = frame.data
       setDetail((d) => d && d.conversation.id === conversation.id ? { ...d, conversation } : d)

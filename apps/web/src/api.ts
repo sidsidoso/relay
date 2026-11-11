@@ -3,7 +3,7 @@ export type Status = 'open' | 'waiting_human' | 'closed'
 export type Message = {
   id: number; conversationId: number; sender: 'contact' | 'agent' | 'user' | 'system'; userId: number | null
   type: 'text' | 'audio'; text: string | null; mediaPath: string | null; mediaMime: string | null
-  transcription: { status: 'ok' | 'empty' | 'failed'; text?: string } | null; createdAt: string
+  transcription: { status: 'ok' | 'empty' | 'failed'; text?: string; error?: string; model?: string; durationS?: number } | null; createdAt: string
 }
 export type Conversation = {
   id: number; contactId: number; channel: string; status: Status; assigneeId: number | null; agentTurns: number
@@ -18,6 +18,7 @@ export type AgentRun = {
 }
 export type InboxFrame =
   | { event: 'message.created'; data: { conversationId: number; message: Message } }
+  | { event: 'message.updated'; data: { conversationId: number; message: Message } }
   | { event: 'conversation.updated'; data: { conversation: Conversation } }
   | { event: 'agent.run.created'; data: { conversationId: number; run: AgentRun } }
 
@@ -54,3 +55,6 @@ export const api = {
   reply: (id: number, text: string) => post<{ message: Message }>(`/api/conversations/${id}/messages`, { text }),
   agentRuns: (id: number) => call<{ runs: AgentRun[] }>(`/api/conversations/${id}/agent-runs`),
 }
+
+/** The stored voice message, for the inbox audio player (cookie-authenticated). */
+export const audioUrl = (conversationId: number, messageId: number) => `/api/conversations/${conversationId}/messages/${messageId}/audio`

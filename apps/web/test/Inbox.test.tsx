@@ -146,4 +146,15 @@ describe('Inbox', () => {
       expect(mocked.list.mock.calls.length - before).toBe(1)
     } finally { vi.useRealTimers() }
   })
+
+  it('replaces a message when its transcription arrives', async () => {
+    const audio = { ...detail(1, 'Ana').messages[0]!, id: 101, type: 'audio' as const, text: null, mediaPath: 'a.webm', mediaMime: 'audio/webm' }
+    mocked.get.mockImplementation(async (id: number) => ({ ...detail(id, id === 1 ? 'Ana' : 'Bob'), messages: [audio] }))
+    await openFirst()
+    expect(await screen.findByText('Not transcribed yet')).toBeInTheDocument()
+    const onFrame = vi.mocked(connectLive).mock.calls[0]![1] as (f: unknown) => void
+    act(() => onFrame({ event: 'message.updated', data: { conversationId: 1, message: { ...audio, transcription: { status: 'ok', text: 'Quanto custa?' } } } }))
+    expect(await screen.findByText('Quanto custa?')).toBeInTheDocument()
+    expect(screen.queryByText('Not transcribed yet')).toBeNull()
+  })
 })

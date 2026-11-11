@@ -50,3 +50,5 @@ input { font: inherit; padding: 8px; border: 1px solid var(--line); border-radiu
 .w-audio { font-style: italic; }
 .w-voice[aria-pressed='true'] { background: #dc2626; color: #fff; border-color: #dc2626; }
 .widget-notice { margin: 0; padding: 4px 12px 8px; font-size: 13px; color: var(--muted); }
+.msg-audio { width: 260px; max-width: 100%; height: 36px; }
+.msg-transcript { margin: 0; font-size: 13px; }
