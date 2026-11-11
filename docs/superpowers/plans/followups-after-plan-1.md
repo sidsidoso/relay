@@ -13,9 +13,13 @@ Findings from the plan-1 reviews that were deliberately deferred. Each later pla
 - Spec §6 channel contract updated.
 - Typed settings for the agent keys (`agentSettings`); the generic settings API is still plan 4.
 
+## Done in plan 3
+- Real providers receive every search passage (the engine sends all hits; covered by `providers-engine.test.ts`).
+- `EventBus.on`: duplicate registrations ignored, non-native thenables caught, `Listener` typed as `void | Promise<void>`.
+
 ## Found during plan 2 (for later)
 - The default handoff keyword `agent` is a whole-word match, so "real estate agent" hands off too; revisit the defaults with the settings UI (plan 4).
-- The demo provider only reads the first search hit; real providers (plan 3) get all passages.
+- Text-only Ollama models cannot call `search_knowledge`; consider putting the top passages in the system prompt for them (spec §4 'What it receives') together with the settings work in plan 4.
 
 ## Plan 4 — settings and knowledge base
 - Typed settings instead of `Record<string, unknown>`.
@@ -39,7 +43,3 @@ Findings from the plan-1 reviews that were deliberately deferred. Each later pla
 - Compose resilience: healthchecks, `depends_on` with conditions, nginx `resolver 127.0.0.11` so an api restart does not cause 502s.
 - `verifyPassword`: return false on an empty key; switch `z.string().email()` to `z.email()`; validate `PORT`.
 - Tests: session expiry and cookie attributes, 404 on every conversation action, 401 on get/reply/act in the inbox, stale list/filter guard, close-listener races in WebSocket tests, restore spies in `finally`, close apps in tests, Playwright end-to-end (spec §11).
-
-
-## Small hardening (any plan)
-- `EventBus.on`: ignore or track a second registration of the same function (today `off` removes only the latest wrapper); use `Promise.resolve(result).catch` to also catch non-native thenables; type `Listener` as `void | Promise<void>`.
