@@ -11,6 +11,12 @@ export class NotFoundError extends Error {
   constructor(what: string) { super(`${what} not found`) }
 }
 
+export class ConflictError extends Error {
+  constructor(public code: string, message: string) { super(message) }
+}
+
+export type OutboundInput = { sender: 'agent' | 'user' | 'system'; userId?: number; text: string }
+
 const now = () => new Date().toISOString()
 
 function findOrCreateContact(db: Db, msg: InboundMessage): Contact {
@@ -42,17 +48,23 @@ function touch(deps: CoreDeps, id: number, changes: Partial<Conversation> = {}):
 }
 
 export function receiveInbound(deps: CoreDeps, msg: InboundMessage): { conversation: Conversation; message: Message } {
-  const contact = findOrCreateContact(deps.db, msg)
-  const existing = currentConversation(deps.db, contact.id)
-  const conv = existing ?? deps.db.insert(conversations).values({
-    contactId: contact.id, channel: msg.channel, status: 'open', createdAt: now(), updatedAt: now(),
-  }).returning().get()
-  const message = deps.db.insert(messages).values({
-    conversationId: conv.id, sender: 'contact', type: msg.type, text: msg.text ?? null,
-    mediaPath: msg.mediaPath ?? null, mediaMime: msg.mediaMime ?? null, createdAt: now(),
-  }).returning().get()
-  deps.bus.emit('message.created', { conversationId: conv.id, message })
-  const conversation = touch(deps, conv.id)
+  // better-sqlite3 transactions are synchronous: no awaits and no bus events inside.
+  const { conversation, message } = deps.db.transaction(() => {
+    const contact = findOrCreateContact(deps.db, msg)
+    const existing = currentConversation(deps.db, contact.id)
+    const conv = existing ?? deps.db.insert(conversations).values({
+      contactId: contact.id, channel: msg.channel, status: 'open', createdAt: now(), updatedAt: now(),
+    }).returning().get()
+    const message = deps.db.insert(messages).values({
+      conversationId: conv.id, sender: 'contact', type: msg.type, text: msg.text ?? null,
+      mediaPath: msg.mediaPath ?? null, mediaMime: msg.mediaMime ?? null, createdAt: now(),
+    }).returning().get()
+    const conversation = deps.db.update(conversations).set({ updatedAt: now() })
+      .where(eq(conversations.id, conv.id)).returning().get()!
+    return { conversation, message }
+  })
+  deps.bus.emit('message.created', { conversationId: conversation.id, message })
+  deps.bus.emit('conversation.updated', { conversation })
   return { conversation, message }
 }
 
@@ -86,27 +98,63 @@ export function getConversation(deps: CoreDeps, id: number) {
 }
 
 export function assign(deps: CoreDeps, id: number, userId: number): Conversation {
+  const current = deps.db.select().from(conversations).where(eq(conversations.id, id)).get()
+  if (!current) throw new NotFoundError('Conversation')
+  if (current.status === 'closed') throw new ConflictError('conversation_closed', 'Conversation is closed')
   return touch(deps, id, { assigneeId: userId, status: 'open' })
 }
 
 export function handBack(deps: CoreDeps, id: number): Conversation {
-  return touch(deps, id, { assigneeId: null, status: 'open', handoffReason: null })
+  return touch(deps, id, { assigneeId: null, status: 'open', handoffReason: null, agentTurns: 0 })
 }
 
 export function close(deps: CoreDeps, id: number): Conversation {
   return touch(deps, id, { status: 'closed' })
 }
 
-export async function teamReply(deps: CoreDeps, id: number, userId: number, text: string): Promise<Message> {
+/**
+ * The single outbound path (team, agent, system): stores the message and applies `changes` in one
+ * transaction, emits, then delivers. A delivery failure is logged and never creates a duplicate.
+ */
+export async function postOutbound(
+  deps: CoreDeps, id: number, input: OutboundInput, changes: Partial<Conversation> = {},
+): Promise<Message> {
   const found = getConversation(deps, id)
   if (!found) throw new NotFoundError('Conversation')
-  const message = deps.db.insert(messages).values({
-    conversationId: id, sender: 'user', userId, type: 'text', text, createdAt: now(),
-  }).returning().get()
+  if (found.conversation.status === 'closed') throw new ConflictError('conversation_closed', 'Conversation is closed')
+  const { message, conversation } = deps.db.transaction(() => {
+    const message = deps.db.insert(messages).values({
+      conversationId: id, sender: input.sender, userId: input.userId ?? null, type: 'text', text: input.text, createdAt: now(),
+    }).returning().get()
+    const conversation = deps.db.update(conversations).set({ ...changes, updatedAt: now() })
+      .where(eq(conversations.id, id)).returning().get()!
+    return { message, conversation }
+  })
   deps.bus.emit('message.created', { conversationId: id, message })
-  const conversation = touch(deps, id)
-  await deps.channels.get(conversation.channel)?.send({ conversation, contact: found.contact }, message)
+  deps.bus.emit('conversation.updated', { conversation })
+  try {
+    await deps.channels.get(conversation.channel)?.send({ conversation, contact: found.contact }, message)
+  } catch (err) {
+    // The message is stored and visible in the inbox; a retry must not create a duplicate.
+    console.error('[relay] delivery failed', conversation.channel, err)
+  }
   return message
+}
+
+export function teamReply(deps: CoreDeps, id: number, userId: number, text: string): Promise<Message> {
+  return postOutbound(deps, id, { sender: 'user', userId, text })
+}
+
+export function addTags(deps: CoreDeps, id: number, tags: string[]): Conversation {
+  const current = deps.db.select().from(conversations).where(eq(conversations.id, id)).get()
+  if (!current) throw new NotFoundError('Conversation')
+  const merged = [...current.tags]
+  for (const raw of tags) {
+    const tag = String(raw).trim().toLowerCase()
+    if (tag.length < 1 || tag.length > 30 || merged.includes(tag)) continue
+    merged.push(tag)
+  }
+  return touch(deps, id, { tags: merged.slice(0, 10) })
 }
 
 export function historyForContact(deps: CoreDeps, channel: ChannelId, contactKey: string): Message[] {

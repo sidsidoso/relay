@@ -54,4 +54,16 @@ describe('inbox routes', () => {
     const bad = await app.inject({ method: 'GET', url: '/api/conversations?status=nope', headers: { cookie } })
     expect(bad.statusCode).toBe(400)
   })
+
+  it('replying to or assigning a closed conversation answers 409 conversation_closed', async () => {
+    const { app, deps, login } = await testServer()
+    const cookie = await login()
+    const { conversation } = receiveInbound(deps, hello)
+    await app.inject({ method: 'POST', url: `/api/conversations/${conversation.id}/close`, headers: { cookie } })
+    const assign = await app.inject({ method: 'POST', url: `/api/conversations/${conversation.id}/assign`, headers: { cookie } })
+    expect(assign.statusCode).toBe(409)
+    const res = await app.inject({ method: 'POST', url: `/api/conversations/${conversation.id}/messages`, headers: { cookie }, payload: { text: 'late' } })
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toEqual({ error: 'Conversation is closed', code: 'conversation_closed' })
+  })
 })
