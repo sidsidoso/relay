@@ -147,4 +147,38 @@ describe('runAgentTurn', () => {
     await runAgentTurn(deps, id)
     expect(listRuns(deps.db, id)[0]).toMatchObject({ inputTokens: 12, outputTokens: 3 })
   })
+  it('passes a provider\x27s opaque raw turn back on the next tool round', async () => {
+    const seen: ChatMessage[][] = []
+    const raw = [{ type: 'opaque', signature: 'abc' }]
+    await setup({
+      id: 'raw', model: null,
+      generate: async (req) => {
+        seen.push(structuredClone(req.messages))
+        return seen.length === 1
+          ? { kind: 'tool_calls', calls: [{ id: 't1', name: 'tag_conversation', input: { tags: ['pricing'] } }], raw }
+          : { kind: 'text', text: 'done' }
+      },
+    })
+    const id = ask('price?')
+    expect((await runAgentTurn(deps, id)).outcome).toBe('replied')
+    expect(seen[1]!.slice(-2)).toEqual([
+      { role: 'assistant', content: '', toolCalls: [{ id: 't1', name: 'tag_conversation', input: { tags: ['pricing'] } }], raw },
+      { role: 'tool', toolCallId: 't1', name: 'tag_conversation', content: 'ok' },
+    ])
+  })
+
+  it('a tool_calls result without raw adds no raw key', async () => {
+    const seen: ChatMessage[][] = []
+    await setup({
+      id: 'noraw', model: null,
+      generate: async (req) => {
+        seen.push(structuredClone(req.messages))
+        return seen.length === 1
+          ? { kind: 'tool_calls', calls: [{ id: 't1', name: 'tag_conversation', input: { tags: ['x'] } }] }
+          : { kind: 'text', text: 'done' }
+      },
+    })
+    await runAgentTurn(deps, ask('price?'))
+    expect('raw' in seen[1]!.at(-2)!).toBe(false)
+  })
 })

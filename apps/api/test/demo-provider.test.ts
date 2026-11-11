@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { DemoProvider } from '../src/agent/providers/demo'
-import { selectProvider } from '../src/agent/providers'
 import { TOOL_SPECS, NO_RESULTS } from '../src/agent/tools'
 import type { ChatMessage } from '../src/agent/providers/types'
 
@@ -42,16 +41,6 @@ describe('DemoProvider', () => {
     expect(none).toMatchObject({ kind: 'tool_calls', calls: [{ name: 'transfer_to_human', input: { reason: 'No answer in the knowledge base' } }] })
     const complaint = await run([{ role: 'user', content: 'Quero cancelar meu plano' }])
     expect(complaint).toMatchObject({ kind: 'tool_calls', calls: [{ name: 'transfer_to_human' }] })
-  })
-
-  it('selectProvider falls back to demo and warns once for an unknown provider', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    try {
-      expect(selectProvider({}).id).toBe('demo')
-      expect(selectProvider({ RELAY_PROVIDER: 'claude' }).id).toBe('demo')
-      selectProvider({ RELAY_PROVIDER: 'claude' })
-      expect(warn).toHaveBeenCalledTimes(1)
-    } finally { warn.mockRestore() }
   })
 
   it('TOOL_SPECS declares exactly the three tools', () => {

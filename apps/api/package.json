@@ -7,9 +7,11 @@
     "start": "tsx src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json",
-    "db:generate": "drizzle-kit generate"
+    "db:generate": "drizzle-kit generate",
+    "try-provider": "tsx scripts/try-provider.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@fastify/cookie": "^11.1.5",
     "@fastify/websocket": "^11.3.7",
     "better-sqlite3": "^13.0.3",
