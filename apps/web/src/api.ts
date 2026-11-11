@@ -12,6 +12,14 @@ export type Conversation = {
 export type ConversationSummary = Conversation & { contactName: string | null; lastMessage: string | null; assigneeName: string | null }
 export type Contact = { id: number; channel: string; contactKey: string; name: string | null }
 export type Filter = 'all' | 'waiting_human' | 'mine' | 'closed'
+export type AgentRun = {
+  id: number; conversationId: number; provider: string; model: string | null; durationMs: number
+  inputTokens: number | null; outputTokens: number | null; outcome: 'replied' | 'transferred' | 'failed'; error: string | null; createdAt: string
+}
+export type InboxFrame =
+  | { event: 'message.created'; data: { conversationId: number; message: Message } }
+  | { event: 'conversation.updated'; data: { conversation: Conversation } }
+  | { event: 'agent.run.created'; data: { conversationId: number; run: AgentRun } }
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string) { super(code) }
@@ -44,4 +52,5 @@ export const api = {
   handBack: (id: number) => post<{ conversation: Conversation }>(`/api/conversations/${id}/hand-back`),
   close: (id: number) => post<{ conversation: Conversation }>(`/api/conversations/${id}/close`),
   reply: (id: number, text: string) => post<{ message: Message }>(`/api/conversations/${id}/messages`, { text }),
+  agentRuns: (id: number) => call<{ runs: AgentRun[] }>(`/api/conversations/${id}/agent-runs`),
 }

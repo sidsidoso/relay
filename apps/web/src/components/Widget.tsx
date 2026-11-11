@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { connectLive, type Live } from '../live'
 
 type WidgetMessage = { id: number; sender: 'contact' | 'agent' | 'user' | 'system'; type: 'text' | 'audio'; text: string | null }
+type WidgetFrame = { type: 'history'; messages: WidgetMessage[] } | { type: 'message'; message: WidgetMessage } | { type: 'error'; code: string }
 
 const KEY = 'relay.visitor'
 
@@ -31,7 +32,7 @@ export function Widget({ company }: { company: string }) {
 
   useEffect(() => {
     if (!open) return
-    const live = connectLive(`/ws/widget?token=${visitorToken()}`, (frame) => {
+    const live = connectLive<WidgetFrame>(`/ws/widget?token=${visitorToken()}`, (frame) => {
       if (frame.type === 'error') setNotice('failed')
       if (frame.type === 'history') setMessages(frame.messages)
       if (frame.type === 'message') setMessages((m) => m.some((x) => x.id === frame.message.id) ? m : [...m, frame.message])
