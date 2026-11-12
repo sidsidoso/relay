@@ -91,6 +91,16 @@ describe('OllamaProvider', () => {
     const { p } = provider([{ throws: abortError }])
     await expect(p.generate({ system: 's', messages: [{ role: 'user', content: 'x' }], tools: [], signal: controller.signal })).rejects.toBe(abortError)
   })
+
+  it('uses the text-only prompt for the request without tools', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { p, requests } = provider([{ status: 400, body: fixture('ollama/no-tools.json') }, { body: fixture('ollama/text.json') }], 'gemma2:2b')
+      await p.generate({ system: 'TOOLS PROMPT', textOnlySystem: 'TEXT PROMPT', messages: [{ role: 'user', content: 'hi' }], tools: TOOL_SPECS })
+      expect(requests[0]!.body.messages[0]).toEqual({ role: 'system', content: 'TOOLS PROMPT' })
+      expect(requests[1]!.body.messages[0]).toEqual({ role: 'system', content: 'TEXT PROMPT' })
+    } finally { warn.mockRestore() }
+  })
 })
 
 describe('toOllamaMessages', () => {

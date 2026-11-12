@@ -75,7 +75,7 @@ export class OllamaProvider implements Provider {
     return !this.toolsSupported
   }
 
-  async generate({ system, messages, tools, signal }: GenerateRequest): Promise<GenerateResult> {
+  async generate({ system, textOnlySystem, messages, tools, signal }: GenerateRequest): Promise<GenerateResult> {
     const withTools = this.toolsSupported && tools.length > 0
     let res = await this.chat(system, messages, withTools ? tools : [], signal)
     if (withTools && res.status === 400) {
@@ -83,7 +83,7 @@ export class OllamaProvider implements Provider {
       if (!NO_TOOLS.test(detail)) throw new ProviderError('ollama_http_400', detail)
       this.toolsSupported = false
       console.warn(`[relay] ollama model "${this.model}" does not support tools; running in text-only mode`)
-      res = await this.chat(system, messages, [], signal)
+      res = await this.chat(textOnlySystem ?? system, messages, [], signal)
     }
     if (!res.ok) {
       const detail = await errorText(res)

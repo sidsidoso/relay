@@ -9,7 +9,7 @@ import { ChannelRegistry } from '../src/channels/types'
 import { receiveInbound, getConversation, assign, postOutbound } from '../src/core/conversations'
 import { loadKnowledge } from '../src/agent/knowledge'
 import { DemoProvider } from '../src/agent/providers/demo'
-import { runAgentTurn, KNOWLEDGE_HEADER, type EngineDeps } from '../src/agent/engine'
+import { runAgentTurn, buildSystemPrompt, KNOWLEDGE_HEADER, SEARCH_RULE, type EngineDeps } from '../src/agent/engine'
 import { listRuns } from '../src/agent/runs'
 import type { ChatMessage, GenerateRequest, Provider } from '../src/agent/providers/types'
 
@@ -235,5 +235,26 @@ describe('text-only providers', () => {
     const { conversation } = receiveInbound(deps, { channel: 'widget', contactKey: 't-3', type: 'text', text: 'How much is a meeting room per hour?' })
     await runAgentTurn({ ...deps, provider }, conversation.id)
     expect(seen[0]!.system).not.toContain(KNOWLEDGE_HEADER)
+  })
+
+  it('tool-capable providers are told to search the knowledge base first, and get a text-only prompt for a fallback', async () => {
+    const { provider, seen } = capturing(false)
+    const { conversation } = receiveInbound(deps, { channel: 'widget', contactKey: 't-4', type: 'text', text: 'How much is a meeting room per hour?' })
+    await runAgentTurn({ ...deps, provider }, conversation.id)
+    expect(seen[0]!.system).toContain(SEARCH_RULE)
+    expect(seen[0]!.textOnlySystem).toContain(KNOWLEDGE_HEADER)
+    expect(seen[0]!.textOnlySystem).toContain('$20 per hour')
+  })
+
+  it('text-only providers get no fallback prompt', async () => {
+    const { provider, seen } = capturing(true)
+    const { conversation } = receiveInbound(deps, { channel: 'widget', contactKey: 't-5', type: 'text', text: 'Hello' })
+    await runAgentTurn({ ...deps, provider }, conversation.id)
+    expect(seen[0]!.textOnlySystem).toBeUndefined()
+  })
+
+  it('buildSystemPrompt puts the instructions first', () => {
+    expect(buildSystemPrompt('Be nice.', false, KB, 'x').startsWith('Be nice.\n\nRules:')).toBe(true)
+    expect(buildSystemPrompt('Be nice.', true, KB, 'meeting room')).toContain('Meeting rooms')
   })
 })

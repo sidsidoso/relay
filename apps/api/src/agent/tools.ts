@@ -6,7 +6,7 @@ export const NO_RESULTS = 'NO_RESULTS'
 export const TOOL_SPECS: ToolSpec[] = [
   {
     name: 'search_knowledge',
-    description: 'Search the company knowledge base (prices, plans, rooms, opening hours, address). Use it before answering factual questions.',
+    description: 'Search the company knowledge base. Use it before answering any question about the company, its products, services, prices, opening hours, policies or location.',
     parameters: { type: 'object', properties: { query: { type: 'string', description: 'What to look for' } }, required: ['query'] },
   },
   {

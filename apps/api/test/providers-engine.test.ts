@@ -8,7 +8,7 @@ import { receiveInbound, getConversation } from '../src/core/conversations'
 import { loadKnowledge, searchKnowledge } from '../src/agent/knowledge'
 import { ClaudeProvider } from '../src/agent/providers/claude'
 import { OllamaProvider } from '../src/agent/providers/ollama'
-import { runAgentTurn, type EngineDeps } from '../src/agent/engine'
+import { runAgentTurn, KNOWLEDGE_HEADER, type EngineDeps } from '../src/agent/engine'
 import { listRuns } from '../src/agent/runs'
 import type { Provider } from '../src/agent/providers/types'
 import { fakeFetch, fixture, type Recorded } from './fake-fetch'
@@ -87,5 +87,16 @@ describe('agent turns over recorded provider responses', () => {
     const id = ask('hello there')
     expect((await runAgentTurn(deps, id)).outcome).toBe('failed')
     expect(listRuns(deps.db, id)[0]!.error).toBe('ollama_offline: fetch failed')
+  })
+
+  it('Ollama: the first text-only request already carries the knowledge passages', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const f = fakeFetch([{ status: 400, body: fixture('ollama/no-tools.json') }, { body: fixture('ollama/text.json') }])
+    await setup(new OllamaProvider({ url: 'http://ollama:11434', model: 'gemma2:2b', fetch: f.fetch }))
+    const id = ask('How much is a meeting room per hour?')
+    expect((await runAgentTurn(deps, id)).outcome).toBe('replied')
+    expect(f.requests[0]!.body.messages[0].content).not.toContain(KNOWLEDGE_HEADER)
+    expect(f.requests[1]!.body.messages[0].content).toContain(KNOWLEDGE_HEADER)
+    expect(f.requests[1]!.body.messages[0].content).toContain('Meeting rooms')
   })
 })

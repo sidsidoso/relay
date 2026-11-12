@@ -17,17 +17,21 @@ export const TRANSCRIBED_PREFIX = '[customer audio, transcribed] '
 export type EngineDeps = CoreDeps & { provider: Provider; knowledge: () => Passage[]; timeoutMs?: number }
 export type TurnResult = { outcome: 'replied' | 'transferred' | 'failed' | 'skipped'; run?: AgentRun }
 
+/** Tool-capable models must look facts up instead of answering from memory. */
+export const SEARCH_RULE =
+  '- Before answering any question about the company, its products, services, prices, opening hours, policies or location, call search_knowledge and answer only from what it returns. Never invent prices or facts.'
+
 const RULES = [
   'Rules:',
-  '- Use search_knowledge before answering questions about prices, plans, rooms, hours or the address. Never invent prices or facts.',
-  '- If you cannot answer confidently, or the customer wants a human, a complaint, a cancellation or a refund, call transfer_to_human.',
+  SEARCH_RULE,
+  '- If search_knowledge returns nothing useful, if you cannot answer confidently, or if the customer wants a human, a complaint, a cancellation or a refund, call transfer_to_human.',
   '- Reply in the language the customer writes in. Keep answers short.',
 ].join('\n')
 
 /** For models without tools: facts come only from the passages below, and a person takes over what they do not cover. */
 const TEXT_ONLY_RULES = [
   'Rules:',
-  '- Answer questions about prices, plans, rooms, hours or the address only from the knowledge base passages below. Never invent prices or facts.',
+  '- Answer questions about the company, its products, services, prices, opening hours, policies or location only from the knowledge base passages below. Never invent prices or facts.',
   '- If the passages do not answer the question, say that a person from the team will follow up.',
   '- Reply in the language the customer writes in. Keep answers short.',
 ].join('\n')
@@ -38,6 +42,13 @@ function passagesBlock(passages: Passage[], query: string): string {
   const hits = searchKnowledge(passages, query)
   if (hits.length === 0) return `${KNOWLEDGE_HEADER} none matched.`
   return `${KNOWLEDGE_HEADER}\n\n${hits.map((h) => `### ${h.title}\n${h.text}`).join('\n\n')}`
+}
+
+/** The system prompt: the configured instructions, then the rules; text-only models also get the matching passages. */
+export function buildSystemPrompt(instructions: string, textOnly: boolean, knowledge: Passage[], query: string): string {
+  return textOnly
+    ? `${instructions}\n\n${TEXT_ONLY_RULES}\n\n${passagesBlock(knowledge, query)}`
+    : `${instructions}\n\n${RULES}`
 }
 
 class TimeoutError extends Error { constructor() { super('timeout') } }
@@ -120,15 +131,17 @@ export async function runAgentTurn(deps: EngineDeps, conversationId: number): Pr
   if (conversation.agentTurns >= settings.turnLimit) return transfer('Turn limit reached')
   if (pending.some((m) => asksForHuman(wordsOf(m), settings.handoffKeywords))) return transfer('Customer asked for a human')
 
-  const system = deps.provider.textOnly
-    ? `${settings.instructions}\n\n${TEXT_ONLY_RULES}\n\n${passagesBlock(deps.knowledge(), pending.map(wordsOf).filter(Boolean).join(' '))}`
-    : `${settings.instructions}\n\n${RULES}`
+  const query = pending.map(wordsOf).filter(Boolean).join(' ')
+  const textOnly = !!deps.provider.textOnly
+  const system = buildSystemPrompt(settings.instructions, textOnly, deps.knowledge(), query)
+  // If the provider drops tools mid-request (Ollama), it needs the prompt with the passages.
+  const textOnlySystem = textOnly ? undefined : buildSystemPrompt(settings.instructions, true, deps.knowledge(), query)
   const chat: ChatMessage[] = messages.slice(-HISTORY_LIMIT).map(toChat)
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const result = await withTimeout(deps.timeoutMs ?? DEFAULT_TIMEOUT_MS, (signal) =>
-        deps.provider.generate({ system, messages: chat, tools: TOOL_SPECS, signal }))
+        deps.provider.generate({ system, ...(textOnlySystem ? { textOnlySystem } : {}), messages: chat, tools: TOOL_SPECS, signal }))
       if (result.usage?.inputTokens !== undefined) inputTokens = (inputTokens ?? 0) + result.usage.inputTokens
       if (result.usage?.outputTokens !== undefined) outputTokens = (outputTokens ?? 0) + result.usage.outputTokens
 
