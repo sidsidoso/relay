@@ -51,7 +51,7 @@ console.log(transcriberUrl
   ? `[relay] transcription: ${transcriberUrl}, media in ${mediaDir}`
   : `[relay] transcription: off (TRANSCRIBER_URL is not set); voice messages are stored in ${mediaDir} and reach the agent as [audio]`)
 
-const app = await buildServer({ db, bus, channels }, { widget, mediaDir })
+const app = await buildServer({ db, bus, channels }, { widget, mediaDir, knowledge })
 const port = Number(process.env.PORT ?? 3000)
 await app.listen({ port, host: process.env.HOST ?? '0.0.0.0' })
 console.log(`[relay] api listening on :${port}`)
