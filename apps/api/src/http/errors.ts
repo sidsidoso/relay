@@ -4,6 +4,7 @@ import { ConflictError, NotFoundError } from '../core/conversations'
 
 export function registerErrorHandler(app: FastifyInstance) {
   app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, _req, reply) => {
+    if (err.code === 'FST_ERR_CTP_BODY_TOO_LARGE') return reply.code(413).send({ error: 'Payload too large', code: 'too_large' })
     if (err instanceof ConflictError) return reply.code(409).send({ error: err.message, code: err.code })
     if (err instanceof NotFoundError) return reply.code(404).send({ error: err.message, code: 'not_found' })
     if (err instanceof z.ZodError) return reply.code(400).send({ error: 'Invalid request', code: 'invalid_request' })

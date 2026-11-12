@@ -1,7 +1,9 @@
 import { NO_RESULTS } from '../tools'
+import { AUDIO_PLACEHOLDER, TRANSCRIBED_PREFIX } from '../engine'
 import type { ChatMessage, GenerateRequest, GenerateResult, Provider } from './types'
 
 const GREETING = "Hi! I'm the Acme Coworking assistant. Ask me about plans, prices, meeting rooms, opening hours or the virtual office."
+export const AUDIO_FALLBACK = "Sorry, I couldn't listen to your voice message. Could you type your question?"
 const GREETINGS = /^(hi|hello|hey|oi|ola|bom dia|boa tarde|boa noite)\b/
 const HANDOFF_WORDS = /\b(complain|complaint|refund|cancel|reclamacao|reembolso|cancelar)\b/
 const MAX_ANSWER = 600
@@ -26,11 +28,13 @@ export class DemoProvider implements Provider {
     }
     const user = [...messages].reverse().find((m): m is Extract<ChatMessage, { role: 'user' }> => m.role === 'user')
     if (!user) return { kind: 'text', text: GREETING }
-    const q = plain(user.content)
+    if (user.content === AUDIO_PLACEHOLDER) return { kind: 'text', text: AUDIO_FALLBACK }
+    const said = user.content.startsWith(TRANSCRIBED_PREFIX) ? user.content.slice(TRANSCRIBED_PREFIX.length) : user.content
+    const q = plain(said)
     if (GREETINGS.test(q) && q.split(/\s+/).length <= 4) return { kind: 'text', text: GREETING }
     if (HANDOFF_WORDS.test(q)) {
       return { kind: 'tool_calls', calls: [{ id, name: 'transfer_to_human', input: { reason: 'Customer wants to complain, cancel or get a refund' } }] }
     }
-    return { kind: 'tool_calls', calls: [{ id, name: 'search_knowledge', input: { query: user.content } }] }
+    return { kind: 'tool_calls', calls: [{ id, name: 'search_knowledge', input: { query: said } }] }
   }
 }

@@ -38,4 +38,17 @@ describe('/ws/inbox', () => {
     const code = await new Promise<number>((resolve) => ws.once('close', (c: number) => resolve(c)))
     expect(code).toBe(4401)
   })
+
+  it('pushes transcription updates', async () => {
+    const { app, deps, login } = await testServer()
+    await app.ready()
+    const cookie = await login()
+    const { conversation, message } = receiveInbound(deps, { channel: 'widget', contactKey: 'v-1', type: 'audio', mediaPath: 'a.webm', mediaMime: 'audio/webm' })
+    const ws = await app.injectWS('/ws/inbox', { headers: { cookie } })
+    const first = nextFrame(ws)
+    const updated = { ...message, transcription: { status: 'ok' as const, text: 'hi', at: '2026-11-11T12:00:00.000Z' } }
+    deps.bus.emit('message.updated', { conversationId: conversation.id, message: updated })
+    expect(await first).toEqual({ event: 'message.updated', data: { conversationId: conversation.id, message: updated } })
+    ws.terminate()
+  })
 })

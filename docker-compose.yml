@@ -10,8 +10,20 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-}
       RELAY_OLLAMA_MODEL: ${RELAY_OLLAMA_MODEL:-}
       RELAY_AGENT_TIMEOUT_MS: ${RELAY_AGENT_TIMEOUT_MS:-}
+      # Voice messages: the transcriber below, on the internal network only.
+      TRANSCRIBER_URL: ${TRANSCRIBER_URL:-http://transcriber:8000}
+      RELAY_TRANSCRIBER_LANGUAGE: ${RELAY_TRANSCRIBER_LANGUAGE:-}
     # Lets the container reach an Ollama running on the host (Linux needs this; Docker Desktop has it built in).
     extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped
+  transcriber:
+    build: { context: services/transcriber }
+    environment:
+      TRANSCRIBER_MODEL: ${TRANSCRIBER_MODEL:-small}
+    # The model is downloaded on first start and kept here.
+    volumes: [whisper-models:/models]
+    # No `ports`: only the api reaches it, over the compose network. Audio never leaves the server.
+    expose: ["8000"]
     restart: unless-stopped
   web:
     build: { context: ., dockerfile: apps/web/Dockerfile }
@@ -20,3 +32,4 @@ services:
     restart: unless-stopped
 volumes:
   relay-data:
+  whisper-models:

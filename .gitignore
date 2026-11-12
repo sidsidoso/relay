@@ -6,3 +6,7 @@ data/
 .env
 coverage/
 playwright-report/
+.venv/
+.venv-*/
+__pycache__/
+.pytest_cache/

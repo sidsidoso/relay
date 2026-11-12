@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { fileURLToPath } from 'node:url'
+import { eq } from 'drizzle-orm'
+import { messages } from '../src/db/schema'
 import { createDb } from '../src/db/client'
 import { seed } from '../src/db/seed'
 import { EventBus } from '../src/core/events'
@@ -180,5 +182,24 @@ describe('runAgentTurn', () => {
     })
     await runAgentTurn(deps, ask('price?'))
     expect('raw' in seen[1]!.at(-2)!).toBe(false)
+  })
+
+  it('a transcribed voice message with a handoff keyword hands off without calling the provider', async () => {
+    const provider = { id: 'spy', model: null, generate: vi.fn() }
+    await setup(provider as unknown as Provider)
+    const { conversation, message } = receiveInbound(deps, { channel: 'widget', contactKey: 'k'.repeat(64), type: 'audio', mediaPath: 'a.webm' })
+    deps.db.update(messages).set({ transcription: { status: 'ok', text: 'Quero falar com um atendente', at: 'x' } }).where(eq(messages.id, message.id)).run()
+    expect((await runAgentTurn(deps, conversation.id)).outcome).toBe('transferred')
+    expect(provider.generate).not.toHaveBeenCalled()
+  })
+
+  it('"agent" alone no longer hands off; "a real person" does', async () => {
+    let calls = 0
+    await setup({ id: 'rec', model: null, generate: async () => { calls++; return { kind: 'text', text: 'ok' } } })
+    expect((await runAgentTurn(deps, ask('I am a real estate agent looking for a desk'))).outcome).toBe('replied')
+    expect(calls).toBe(1)
+    // Same contact key, same conversation: this is the next turn.
+    expect((await runAgentTurn(deps, ask('Can I talk to a real person?'))).outcome).toBe('transferred')
+    expect(calls).toBe(1)
   })
 })

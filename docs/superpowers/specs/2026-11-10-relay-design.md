@@ -98,6 +98,7 @@ Every turn writes an `agent_runs` row: provider, model, duration, tokens (when r
 ### Service (`services/transcriber`)
 - `GET /health` returns `{ ok, model, loaded, error }`.
 - `POST /transcribe` takes the raw audio body (language in an `X-Language` header, default `pt`) and returns `{ text, duration_s, processing_s, model }`.
+- `X-Language: auto` lets Whisper detect the language. While the model is loading, or if it failed to load, `POST /transcribe` answers 503.
 - The model loads once at startup; one transcription at a time.
 - Default model `small`; `TRANSCRIBER_MODEL` can select another (for example `large-v3-turbo`). The README includes a table of measured times per model.
 - Body limit 25 MB; a negative or invalid `Content-Length` returns 400 at once.
@@ -111,6 +112,7 @@ Every turn writes an `agent_runs` row: provider, model, duration, tokens (when r
 - Other failures store `transcription.status = 'failed'` and are not retried.
 - Empty speech stores `status = 'empty'`.
 - The agent turn always proceeds; a missing transcription becomes `[audio]`.
+- A 503 counts as `offline`. With `TRANSCRIBER_URL` unset the API does not transcribe (development without Python). Transcription runs in the agent queue before each turn, also for assigned conversations; an offline transcriber is polled on `/health` and the waiting conversations are retried when the model is loaded.
 
 ## 6. Channels
 
@@ -125,7 +127,7 @@ All outbound messages (team, agent, system) go through one core function, `postO
 
 Inbound messages are normalized to `{ channel, contactKey, type: 'text' | 'audio', text?, mediaPath? }` before they reach the core.
 
-- **Widget (v1):** WebSocket with the visitor. The visitor is identified by an anonymous token stored in the browser. Voice is recorded with `MediaRecorder` (webm/opus) and uploaded as binary.
+- **Widget (v1):** WebSocket with the visitor. The visitor is identified by an anonymous token stored in the browser. Voice is recorded with `MediaRecorder` (webm/opus) and uploaded as binary with `POST /api/widget/audio` (visitor token in the `X-Relay-Visitor` header, at most 10 MB). Visitors receive messages without internal fields (no user ids, file names or transcriptions).
 - **WhatsApp (v2):** disabled. v1 ships the interface and a contract test so the core proves it is channel-agnostic.
 
 ## 7. Data (SQLite + Drizzle)

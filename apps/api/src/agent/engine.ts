@@ -10,6 +10,10 @@ export const HISTORY_LIMIT = 20
 export const MAX_TOOL_ROUNDS = 3
 export const DEFAULT_TIMEOUT_MS = 30_000
 
+/** How audio appears in the history sent to the provider (spec §4). */
+export const AUDIO_PLACEHOLDER = '[audio]'
+export const TRANSCRIBED_PREFIX = '[customer audio, transcribed] '
+
 export type EngineDeps = CoreDeps & { provider: Provider; knowledge: () => Passage[]; timeoutMs?: number }
 export type TurnResult = { outcome: 'replied' | 'transferred' | 'failed' | 'skipped'; run?: AgentRun }
 
@@ -27,9 +31,16 @@ export async function handOff(deps: CoreDeps, conversationId: number, reason: st
   await postOutbound(deps, conversationId, { sender: 'agent', text: message }, { status: 'waiting_human', handoffReason: reason })
 }
 
+/** The words of a message: its text, or the transcription of an audio message (null when there is none). */
+function wordsOf(m: Message): string | null {
+  if (m.type !== 'audio') return m.text
+  return m.transcription?.status === 'ok' && m.transcription.text ? m.transcription.text : null
+}
+
 function contentOf(m: Message): string {
   if (m.type === 'audio') {
-    return m.transcription?.status === 'ok' && m.transcription.text ? `[customer audio, transcribed] ${m.transcription.text}` : '[audio]'
+    const words = wordsOf(m)
+    return words ? `${TRANSCRIBED_PREFIX}${words}` : AUDIO_PLACEHOLDER
   }
   return m.text ?? ''
 }
@@ -91,7 +102,7 @@ export async function runAgentTurn(deps: EngineDeps, conversationId: number): Pr
   }
 
   if (conversation.agentTurns >= settings.turnLimit) return transfer('Turn limit reached')
-  if (pending.some((m) => asksForHuman(m.text, settings.handoffKeywords))) return transfer('Customer asked for a human')
+  if (pending.some((m) => asksForHuman(wordsOf(m), settings.handoffKeywords))) return transfer('Customer asked for a human')
 
   const system = `${settings.instructions}\n\n${RULES}`
   const chat: ChatMessage[] = messages.slice(-HISTORY_LIMIT).map(toChat)

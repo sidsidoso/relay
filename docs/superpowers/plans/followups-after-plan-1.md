@@ -17,25 +17,27 @@ Findings from the plan-1 reviews that were deliberately deferred. Each later pla
 - Real providers receive every search passage (the engine sends all hits; covered by `providers-engine.test.ts`).
 - `EventBus.on`: duplicate registrations ignored, non-native thenables caught, `Listener` typed as `void | Promise<void>`.
 
-## Found during plan 2 (for later)
-- The default handoff keyword `agent` is a whole-word match, so "real estate agent" hands off too; revisit the defaults with the settings UI (plan 4).
-- Text-only Ollama models cannot call `search_knowledge`; consider putting the top passages in the system prompt for them (spec §4 'What it receives') together with the settings work in plan 4.
+## Done in plan 4
+- Widget history is merged by message id.
+- Visitors receive a public message shape (`toVisitorMessage`): no `userId`, `mediaPath` or transcription.
+- Transcriptions (and an audio player) in the inbox Timeline, updated live by `message.updated`.
+- Audio is uploaded over HTTP (`POST /api/widget/audio`, 10 MB), so the WebSocket keeps its 64 KiB `maxPayload`.
+- Widget UI pass: `aria-live`, auto-scroll, close button `type="button"`, height capped on short viewports, no empty bubbles.
+- Default handoff keywords no longer include `agent`; the seed upgrades the old default list; keywords also match transcriptions.
 
-## Plan 4 — settings and knowledge base
+## Plan 5 — settings and knowledge base
 - Typed settings instead of `Record<string, unknown>`.
 - Unify validation error codes (login still answers `invalid_body`, everything else `invalid_request`).
 - Inbox UX: in-flight guard on team replies (no double submit), keep a newer draft when a reply succeeds, Timeline auto-scroll, accessibility (reply input label, `aria-pressed` on filters, login button disabled while submitting).
 - Show the demo credentials on `/demo` (spec §8).
 - Paginate `listConversations`.
-
-## Plan 5 — transcription and voice
-- Widget: merge the history frame by message id instead of replacing (one-tick window where a push can be lost).
-- Send a public message DTO to visitors instead of raw DB rows (no `userId`, `mediaPath`, internal transcription fields).
-- Show transcriptions in the inbox Timeline.
-- Raise or split the WebSocket `maxPayload` for binary audio.
-- Widget UI pass: `aria-live`, auto-scroll, close button `type="button"`, max-height on short viewports, no empty bubble for null text.
+- Text-only Ollama models cannot call `search_knowledge`; consider putting the top passages in the system prompt for them (spec §4 'What it receives').
 
 ## Plan 6 — polish, CI, public demo hardening
+- Rate limit and per-token cap on `POST /api/widget/audio`; a retention policy for the media folder.
+- CI runs the transcriber tests (`python -m pytest` in `services/transcriber`) and builds its image.
+- HTTP Range support on the audio route (seeking in long recordings).
+- Compose healthcheck for the transcriber (`GET /health`).
 - Build the Docker images in CI before advertising `docker compose up --build`.
 - Enable the Fastify logger in `main.ts`; add `setNotFoundHandler` returning `{ error, code }`.
 - Sessions: `secure` cookie flag in production, cookie `maxAge` aligned with the 7-day session, purge expired sessions, close inbox sockets on logout/expiry, re-check session on long-lived sockets.

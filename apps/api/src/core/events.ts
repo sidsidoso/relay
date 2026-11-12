@@ -3,6 +3,7 @@ import type { AgentRun, Conversation, Message } from './types'
 
 export type RelayEvents = {
   'message.created': { conversationId: number; message: Message }
+  'message.updated': { conversationId: number; message: Message }
   'conversation.updated': { conversation: Conversation }
   'agent.run.created': { conversationId: number; run: AgentRun }
 }

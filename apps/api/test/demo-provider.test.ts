@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { DemoProvider } from '../src/agent/providers/demo'
+import { DemoProvider, AUDIO_FALLBACK } from '../src/agent/providers/demo'
 import { TOOL_SPECS, NO_RESULTS } from '../src/agent/tools'
 import type { ChatMessage } from '../src/agent/providers/types'
 
@@ -45,5 +45,16 @@ describe('DemoProvider', () => {
 
   it('TOOL_SPECS declares exactly the three tools', () => {
     expect(TOOL_SPECS.map((t) => t.name)).toEqual(['search_knowledge', 'transfer_to_human', 'tag_conversation'])
+  })
+
+  it('searches with the spoken words of a transcribed voice message', async () => {
+    expect(await run([{ role: 'user', content: '[customer audio, transcribed] What are your opening hours?' }])).toEqual({
+      kind: 'tool_calls', calls: [{ id: 'demo-1', name: 'search_knowledge', input: { query: 'What are your opening hours?' } }],
+    })
+    expect(await run([{ role: 'user', content: '[customer audio, transcribed] Oi!' }])).toMatchObject({ kind: 'text', text: expect.stringMatching(/^Hi!/) })
+  })
+
+  it('asks the customer to type when a voice message has no transcription', async () => {
+    expect(await run([{ role: 'user', content: '[audio]' }])).toEqual({ kind: 'text', text: AUDIO_FALLBACK })
   })
 })
