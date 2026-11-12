@@ -2,7 +2,7 @@
 
 An open-source omnichannel inbox with an AI agent and local voice transcription.
 
-> Status: plan 4 of 6 — voice messages are transcribed locally with Whisper; the agent runs on Claude, a local Ollama model, or a scripted demo provider. Next: the settings screen and knowledge base editor.
+> Status: plan 5 of 6 — voice messages are transcribed locally with Whisper; the agent runs on Claude, a local Ollama model, or a scripted demo provider; agent settings and the knowledge base are editable from the **Settings** screen. Next: polish, CI and public demo hardening.
 
 ## Run it
 
@@ -21,7 +21,7 @@ Open http://localhost:8080 (team inbox, demo user pre-filled) and http://localho
 
 When a customer writes and nobody from the team has taken the conversation, the agent answers on its own:
 
-- it searches the knowledge base (`apps/api/knowledge/*.md`, or `RELAY_KNOWLEDGE_DIR`) before answering factual questions;
+- it searches the knowledge base (Markdown files in `data/knowledge`, or `RELAY_KNOWLEDGE_DIR`, editable from **Settings**) before answering factual questions;
 - it hands off to a human when the customer asks for one, when it has no answer, after the turn limit, or when the AI provider fails — the customer always gets a reply;
 - every turn is logged (provider, model, duration, tokens, outcome) and shown live in the inbox under "Agent activity".
 
@@ -46,13 +46,13 @@ With Docker, copy `.env.example` to `.env` and fill in what you need; for `npm r
 | `OLLAMA_URL` | — | Enables Ollama, e.g. `http://localhost:11434` (from Docker: `http://host.docker.internal:11434`). |
 | `RELAY_OLLAMA_MODEL` | `llama3.2` | Ollama model; run `ollama pull <model>` first. |
 | `RELAY_AGENT_TIMEOUT_MS` | `30000` (`120000` for Ollama) | Time limit for each model call. |
-| `RELAY_KNOWLEDGE_DIR` | `apps/api/knowledge` | Folder with the Markdown knowledge base. |
+| `RELAY_KNOWLEDGE_DIR` | `<folder of RELAY_DB>/knowledge` (`/data/knowledge` in Docker) | Folder with the Markdown knowledge base, editable from **Settings**; seeded from `apps/api/knowledge` on first start. |
 
 Notes:
 
 - **Privacy.** With Claude, the recent conversation and the knowledge passages the agent looks up are sent to the Anthropic API. With Ollama, everything stays on your machine.
 - **Failures never strand the customer.** A rate limit, a timeout, a refusal, an unreachable server or an empty answer hands the conversation to a person; the reason shows under "Agent activity" (for example `claude_rate_limited` or `ollama_offline`).
-- **Models without tool support** (some small Ollama models) run in text-only mode: they answer, but cannot search the knowledge base or hand off by themselves; handoff keywords and the turn limit still apply.
+- **Models without tool support** (some small Ollama models) run in text-only mode: the knowledge passages that match the customer's messages are put in their prompt, but they cannot hand off by themselves; handoff keywords and the turn limit still apply.
 - **Quick check** of your configuration, outside the app: `npm run try-provider -w apps/api -- "How much is a meeting room?"` sends one real request and prints the result.
 - **Tests never call a model.** The Claude and Ollama adapters are tested against recorded responses in `apps/api/test/fixtures/`, so CI needs no key and no network.
 

@@ -25,13 +25,14 @@ Findings from the plan-1 reviews that were deliberately deferred. Each later pla
 - Widget UI pass: `aria-live`, auto-scroll, close button `type="button"`, height capped on short viewports, no empty bubbles.
 - Default handoff keywords no longer include `agent`; the seed upgrades the old default list; keywords also match transcriptions.
 
-## Plan 5 — settings and knowledge base
-- Typed settings instead of `Record<string, unknown>`.
-- Unify validation error codes (login still answers `invalid_body`, everything else `invalid_request`).
-- Inbox UX: in-flight guard on team replies (no double submit), keep a newer draft when a reply succeeds, Timeline auto-scroll, accessibility (reply input label, `aria-pressed` on filters, login button disabled while submitting).
-- Show the demo credentials on `/demo` (spec §8).
-- Paginate `listConversations`.
-- Text-only Ollama models cannot call `search_knowledge`; consider putting the top passages in the system prompt for them (spec §4 'What it receives').
+## Done in plan 5
+- Settings are typed by one zod schema (`readSettings` / `updateSettings`) and exposed as `GET/PUT /api/settings`.
+- Validation error codes were unified: every validation error (login included) answers 400 `invalid_request`, with the offending `fields`.
+- Inbox UX: team replies got an in-flight guard (no double submit), a newer draft is kept when a reply succeeds, the Timeline auto-scrolls, and accessibility was improved (reply input label, `aria-pressed` on filters, login button disabled while submitting).
+- The demo credentials are shown on `/demo` (spec §8).
+- `listConversations` is paginated with a cursor (`?limit=&before=`); the inbox has a "Load more" button.
+- Text-only models (some Ollama models) get the top knowledge passages for the pending messages in the system prompt (spec §4 'What it receives').
+- Knowledge base editable from Settings; files live in data/knowledge (seeded from apps/api/knowledge on first start).
 
 ## Plan 6 — polish, CI, public demo hardening
 - Rate limit and per-token cap on `POST /api/widget/audio`; a retention policy for the media folder.
