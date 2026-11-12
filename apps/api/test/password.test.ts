@@ -16,4 +16,9 @@ describe('password hashing', () => {
   it('a malformed stored value is just "false", never a throw', async () => {
     expect(await verifyPassword('x', 'garbage')).toBe(false)
   })
+
+  it('a stored hash with an empty or non-hex key never matches', async () => {
+    expect(await verifyPassword('anything', 'scrypt$00$')).toBe(false)
+    expect(await verifyPassword('anything', 'scrypt$00$zz')).toBe(false)
+  })
 })

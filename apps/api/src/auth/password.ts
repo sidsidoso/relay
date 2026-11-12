@@ -14,6 +14,7 @@ export async function verifyPassword(plain: string, stored: string): Promise<boo
   const [algo, saltHex, keyHex] = stored.split('$')
   if (algo !== 'scrypt' || !saltHex || !keyHex) return false
   const expected = Buffer.from(keyHex, 'hex')
+  if (expected.length === 0) return false // an empty or non-hex key would compare two empty buffers as equal
   const actual = await scrypt(plain, Buffer.from(saltHex, 'hex'), expected.length)
   return expected.length === actual.length && timingSafeEqual(expected, actual)
 }

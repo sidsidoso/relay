@@ -7,7 +7,7 @@ import * as password from './password'
 import { createSession, deleteSession } from './sessions'
 import { SESSION_COOKIE, makeRequireUser } from './guard'
 
-const LoginBody = z.object({ email: z.string().email(), password: z.string().min(1) })
+const LoginBody = z.object({ email: z.email(), password: z.string().min(1) })
 
 const DUMMY_PASSWORD = 'relay-dummy-password'
 

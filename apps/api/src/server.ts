@@ -1,7 +1,8 @@
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify'
 import cookie from '@fastify/cookie'
 import websocket from '@fastify/websocket'
 import { registerErrorHandler } from './http/errors'
+import { notFoundHandler, securityHeaders } from './http/security'
 import { authRoutes } from './auth/routes'
 import { conversationRoutes } from './core/routes'
 import { settingsRoutes } from './core/settingsRoutes'
@@ -17,15 +18,24 @@ export const WS_MAX_PAYLOAD = 64 * 1024
 
 export type ServerDeps = CoreDeps
 
-export async function buildServer(
-  deps: ServerDeps,
-  opts: { widget?: WidgetChannel; mediaDir?: string; knowledge?: KnowledgeStore } = {},
-): Promise<FastifyInstance> {
-  const app = Fastify({ logger: false })
+export type ServerOptions = {
+  widget?: WidgetChannel
+  mediaDir?: string
+  knowledge?: KnowledgeStore
+  /** Fastify logger options; off when not given (tests). */
+  logger?: FastifyServerOptions['logger']
+  /** Trust X-Forwarded-* from the reverse proxy (nginx in Docker): real client IPs and HTTPS detection. */
+  trustProxy?: boolean
+}
+
+export async function buildServer(deps: ServerDeps, opts: ServerOptions = {}): Promise<FastifyInstance> {
+  const app = Fastify({ logger: opts.logger ?? false, trustProxy: opts.trustProxy ?? false })
+  securityHeaders(app)
   await app.register(cookie)
   await app.register(websocket, { options: { maxPayload: WS_MAX_PAYLOAD } })
   app.get('/api/health', async () => ({ ok: true }))
   registerErrorHandler(app)
+  app.setNotFoundHandler(notFoundHandler)
   authRoutes(app, deps.db)
   conversationRoutes(app, deps)
   settingsRoutes(app, deps.db)

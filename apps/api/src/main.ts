@@ -7,6 +7,8 @@ import { EventBus } from './core/events'
 import { ChannelRegistry } from './channels/types'
 import { WidgetChannel } from './channels/widget'
 import { WhatsAppChannel } from './channels/whatsapp'
+import { readFlag, readPort } from './config'
+import { redactUrl } from './http/security'
 import { buildServer } from './server'
 import { agentTimeoutMs, selectProvider } from './agent/providers'
 import { KnowledgeStore, seedKnowledge } from './agent/knowledgeStore'
@@ -51,9 +53,16 @@ console.log(transcriberUrl
   ? `[relay] transcription: ${transcriberUrl}, media in ${mediaDir}`
   : `[relay] transcription: off (TRANSCRIBER_URL is not set); voice messages are stored in ${mediaDir} and reach the agent as [audio]`)
 
-const app = await buildServer({ db, bus, channels }, { widget, mediaDir, knowledge })
-const port = Number(process.env.PORT ?? 3000)
-await app.listen({ port, host: process.env.HOST ?? '0.0.0.0' })
+const port = readPort(env('PORT'))
+const app = await buildServer({ db, bus, channels }, {
+  widget, mediaDir, knowledge,
+  trustProxy: readFlag(env('RELAY_TRUST_PROXY')),
+  logger: {
+    level: env('RELAY_LOG_LEVEL') ?? 'info',
+    serializers: { req: (req: { method: string; url: string; ip?: string }) => ({ method: req.method, url: redactUrl(req.url), remoteAddress: req.ip }) },
+  },
+})
+await app.listen({ port, host: env('HOST') ?? '0.0.0.0' })
 console.log(`[relay] api listening on :${port}`)
 
 let shuttingDown = false

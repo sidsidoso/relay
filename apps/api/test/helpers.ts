@@ -1,11 +1,11 @@
 import { createDb } from '../src/db/client'
 import { seed, DEMO_USER } from '../src/db/seed'
-import { buildServer } from '../src/server'
+import { buildServer, type ServerOptions } from '../src/server'
 import { EventBus } from '../src/core/events'
 import { ChannelRegistry } from '../src/channels/types'
 import { KnowledgeStore } from '../src/agent/knowledgeStore'
 
-export async function testServer(opts: { fakeWidget?: boolean; knowledgeDir?: string } = { fakeWidget: true }) {
+export async function testServer(opts: { fakeWidget?: boolean; knowledgeDir?: string; server?: ServerOptions } = { fakeWidget: true }) {
   const db = createDb(':memory:')
   await seed(db)
   const bus = new EventBus()
@@ -16,7 +16,7 @@ export async function testServer(opts: { fakeWidget?: boolean; knowledgeDir?: st
   }
   const deps = { db, bus, channels }
   const knowledge = opts.knowledgeDir ? new KnowledgeStore(opts.knowledgeDir) : undefined
-  const app = await buildServer(deps, { knowledge })
+  const app = await buildServer(deps, { ...opts.server, ...(knowledge ? { knowledge } : {}) })
   async function login(): Promise<string> {
     const res = await app.inject({
       method: 'POST', url: '/api/auth/login',
