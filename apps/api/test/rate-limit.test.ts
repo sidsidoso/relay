@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,10 +6,11 @@ import { createDb } from '../src/db/client'
 import { seed, DEMO_USER } from '../src/db/seed'
 import { EventBus } from '../src/core/events'
 import { ChannelRegistry } from '../src/channels/types'
-import { WidgetChannel, MAX_SOCKETS_PER_VISITOR } from '../src/channels/widget'
+import { WidgetChannel, MAX_SOCKETS_PER_VISITOR, contactKeyFor } from '../src/channels/widget'
 import { buildServer } from '../src/server'
 import { RateLimiter, defaultLimits, type Limits } from '../src/http/rateLimit'
 import { originAllowed } from '../src/http/origin'
+import { historyForContact } from '../src/core/conversations'
 import { testServer } from './helpers'
 
 const TOKEN = 'v'.repeat(32)
@@ -24,7 +25,7 @@ async function widgetServer(limits: Partial<Limits> = {}, allowedOrigins: string
   const mediaDir = mkdtempSync(join(tmpdir(), 'relay-limits-'))
   const app = await buildServer(deps, { widget, mediaDir, limits: { ...defaultLimits(), ...limits }, allowedOrigins })
   await app.ready()
-  return { app, deps }
+  return { app, deps, widget }
 }
 
 const closeCode = (ws: { once(ev: 'close', fn: (code: number) => void): void }) =>
@@ -81,7 +82,7 @@ describe('limits on public endpoints', () => {
   })
 
   it('widget messages beyond the limit get an error frame and are not stored', async () => {
-    const { app } = await widgetServer({ widgetMessages: new RateLimiter(2, 60_000) })
+    const { app, deps } = await widgetServer({ widgetMessages: new RateLimiter(2, 60_000) })
     const ws = await app.injectWS(`/ws/widget?token=${TOKEN}`)
     const next = frames(ws)
     expect((await next()).type).toBe('history')
@@ -89,6 +90,8 @@ describe('limits on public endpoints', () => {
     expect((await next()).message.text).toBe('one')
     expect((await next()).message.text).toBe('two')
     expect(await next()).toEqual({ type: 'error', code: 'rate_limited' })
+    const stored = historyForContact(deps, 'widget', contactKeyFor(TOKEN)).map((m) => m.text)
+    expect(stored).toEqual(['one', 'two'])
     ws.terminate()
   })
 
@@ -111,6 +114,23 @@ describe('limits on public endpoints', () => {
     const extra = await app.injectWS(`/ws/widget?token=${TOKEN}`)
     expect(await closeCode(extra)).toBe(4429)
     for (const ws of open) ws.terminate()
+  })
+
+  it('closing a socket frees its slot', async () => {
+    const { app, widget } = await widgetServer()
+    const key = contactKeyFor(TOKEN)
+    const open = []
+    for (let i = 0; i < MAX_SOCKETS_PER_VISITOR; i++) open.push(await app.injectWS(`/ws/widget?token=${TOKEN}`))
+    expect(widget.connections(key)).toBe(MAX_SOCKETS_PER_VISITOR)
+    const closed = closeCode(open[0])
+    open[0].terminate()
+    await closed
+    await vi.waitFor(() => expect(widget.connections(key)).toBe(MAX_SOCKETS_PER_VISITOR - 1))
+    const sixth = await app.injectWS(`/ws/widget?token=${TOKEN}`)
+    const next = frames(sixth)
+    expect((await next()).type).toBe('history')
+    expect(widget.connections(key)).toBe(MAX_SOCKETS_PER_VISITOR)
+    for (const ws of [...open.slice(1), sixth]) ws.terminate()
   })
 
   it('browsers from another origin cannot open /ws/widget or /ws/inbox', async () => {

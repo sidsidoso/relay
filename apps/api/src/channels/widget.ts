@@ -16,10 +16,10 @@ const Query = z.object({ token: Token, name: z.string().max(80).optional() })
 /** The visitor token travels in this header on HTTP requests (never in the URL, so it stays out of access logs). */
 export const VISITOR_HEADER = 'x-relay-visitor'
 
-/** The token is a bearer secret: only its hash is used as the contact key, so it never reaches the DB or API. */
 /** A visitor may keep this many widget sockets open (tabs); more are refused with 4429. */
 export const MAX_SOCKETS_PER_VISITOR = 5
 
+/** The token is a bearer secret: only its hash is used as the contact key, so it never reaches the DB or API. */
 export const contactKeyFor = (token: string) => createHash('sha256').update(token).digest('hex')
 
 export type VisitorMessage = { id: number; sender: Message['sender']; type: Message['type']; text: string | null; createdAt: string }
@@ -69,6 +69,7 @@ export function widgetSocket(app: FastifyInstance, deps: CoreDeps, widget: Widge
     const contactKey = contactKeyFor(token)
     if (widget.connections(contactKey) >= MAX_SOCKETS_PER_VISITOR) { socket.close(4429, 'too_many_connections'); return }
     const detach = widget.attach(contactKey, socket)
+    socket.on('close', detach)
     const history = historyForContact(deps, 'widget', contactKey).map(toVisitorMessage)
     setImmediate(() => {
       if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: 'history', messages: history }))
@@ -94,7 +95,6 @@ export function widgetSocket(app: FastifyInstance, deps: CoreDeps, widget: Widge
         if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: 'error', code: 'internal' }))
       }
     })
-    socket.on('close', detach)
   })
 }
 
