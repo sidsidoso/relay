@@ -8,6 +8,7 @@ import { conversationRoutes } from './core/routes'
 import { settingsRoutes } from './core/settingsRoutes'
 import { inboxSocket } from './realtime/inbox'
 import { widgetAudioRoute, widgetSocket, type WidgetChannel } from './channels/widget'
+import { defaultLimits, type Limits } from './http/rateLimit'
 import { mediaRoutes } from './media/routes'
 import { knowledgeRoutes } from './agent/knowledgeRoutes'
 import type { KnowledgeStore } from './agent/knowledgeStore'
@@ -26,6 +27,10 @@ export type ServerOptions = {
   logger?: FastifyServerOptions['logger']
   /** Trust X-Forwarded-* from the reverse proxy (nginx in Docker): real client IPs and HTTPS detection. */
   trustProxy?: boolean
+  /** Extra browser origins allowed to open /ws/* (the page's own origin is always allowed). */
+  allowedOrigins?: string[]
+  /** Rate limits; tests pass small ones. */
+  limits?: Limits
 }
 
 export async function buildServer(deps: ServerDeps, opts: ServerOptions = {}): Promise<FastifyInstance> {
@@ -36,14 +41,16 @@ export async function buildServer(deps: ServerDeps, opts: ServerOptions = {}): P
   app.get('/api/health', async () => ({ ok: true }))
   registerErrorHandler(app)
   app.setNotFoundHandler(notFoundHandler)
-  authRoutes(app, deps.db)
+  const limits = opts.limits ?? defaultLimits()
+  const allowedOrigins = opts.allowedOrigins ?? []
+  authRoutes(app, deps.db, { loginLimiter: limits.login })
   conversationRoutes(app, deps)
   settingsRoutes(app, deps.db)
-  inboxSocket(app, deps)
-  if (opts.widget) widgetSocket(app, deps, opts.widget)
+  inboxSocket(app, deps, { allowedOrigins })
+  if (opts.widget) widgetSocket(app, deps, opts.widget, { allowedOrigins, messageLimiter: limits.widgetMessages })
   if (opts.mediaDir) {
     mediaRoutes(app, deps, opts.mediaDir)
-    if (opts.widget) await widgetAudioRoute(app, deps, opts.widget, opts.mediaDir)
+    if (opts.widget) await widgetAudioRoute(app, deps, opts.widget, opts.mediaDir, limits.widgetAudio)
   }
   if (opts.knowledge) knowledgeRoutes(app, deps.db, opts.knowledge)
   return app

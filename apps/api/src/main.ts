@@ -7,7 +7,7 @@ import { EventBus } from './core/events'
 import { ChannelRegistry } from './channels/types'
 import { WidgetChannel } from './channels/widget'
 import { WhatsAppChannel } from './channels/whatsapp'
-import { readFlag, readPort } from './config'
+import { readFlag, readList, readPort } from './config'
 import { redactUrl } from './http/security'
 import { buildServer } from './server'
 import { agentTimeoutMs, selectProvider } from './agent/providers'
@@ -57,6 +57,7 @@ const port = readPort(env('PORT'))
 const app = await buildServer({ db, bus, channels }, {
   widget, mediaDir, knowledge,
   trustProxy: readFlag(env('RELAY_TRUST_PROXY')),
+  allowedOrigins: readList(env('RELAY_ALLOWED_ORIGINS')),
   logger: {
     level: env('RELAY_LOG_LEVEL') ?? 'info',
     serializers: { req: (req: { method: string; url: string; ip?: string }) => ({ method: req.method, url: redactUrl(req.url), remoteAddress: req.ip }) },

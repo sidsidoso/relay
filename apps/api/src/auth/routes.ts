@@ -6,12 +6,13 @@ import { users } from '../db/schema'
 import * as password from './password'
 import { createSession, deleteSession } from './sessions'
 import { SESSION_COOKIE, makeRequireUser } from './guard'
+import { tooManyRequests, type RateLimiter } from '../http/rateLimit'
 
 const LoginBody = z.object({ email: z.email(), password: z.string().min(1) })
 
 const DUMMY_PASSWORD = 'relay-dummy-password'
 
-export function authRoutes(app: FastifyInstance, db: Db) {
+export function authRoutes(app: FastifyInstance, db: Db, opts: { loginLimiter: RateLimiter }) {
   const requireUser = makeRequireUser(db)
 
   // Verified against when the email is unknown so response time does not reveal which accounts exist.
@@ -32,6 +33,8 @@ export function authRoutes(app: FastifyInstance, db: Db) {
   }
 
   app.post('/api/auth/login', async (req, reply) => {
+    const wait = opts.loginLimiter.take(req.ip)
+    if (wait) return tooManyRequests(reply, wait)
     const body = { data: LoginBody.parse(req.body) } // a ZodError becomes 400 invalid_request in the error handler
     const u = db.select().from(users).where(eq(users.email, body.data.email.toLowerCase())).get()
     let ok = false

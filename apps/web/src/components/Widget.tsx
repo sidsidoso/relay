@@ -4,7 +4,7 @@ import { canRecord, startRecording, type Recording } from '../recorder'
 
 type WidgetMessage = { id: number; sender: 'contact' | 'agent' | 'user' | 'system'; type: 'text' | 'audio'; text: string | null; createdAt?: string }
 type WidgetFrame = { type: 'history'; messages: WidgetMessage[] } | { type: 'message'; message: WidgetMessage } | { type: 'error'; code: string }
-type Notice = 'connecting' | 'failed' | 'mic' | null
+type Notice = 'connecting' | 'failed' | 'mic' | 'slow' | null
 
 const KEY = 'relay.visitor'
 const VISITOR_HEADER = 'X-Relay-Visitor'
@@ -33,13 +33,14 @@ export function mergeMessages(current: WidgetMessage[], incoming: WidgetMessage[
   return [...byId.values()].sort((a, b) => a.id - b.id)
 }
 
-async function uploadAudio(blob: Blob): Promise<WidgetMessage | null> {
+async function uploadAudio(blob: Blob): Promise<WidgetMessage | 'slow' | null> {
   try {
     const res = await fetch('/api/widget/audio', {
       method: 'POST',
       headers: { 'Content-Type': blob.type || 'audio/webm', [VISITOR_HEADER]: visitorToken() },
       body: blob,
     })
+    if (res.status === 429) return 'slow'
     if (!res.ok) return null
     return ((await res.json()) as { message: WidgetMessage }).message
   } catch {
@@ -61,7 +62,7 @@ export function Widget({ company }: { company: string }) {
   useEffect(() => {
     if (!open) return
     const live = connectLive<WidgetFrame>(`/ws/widget?token=${visitorToken()}`, (frame) => {
-      if (frame.type === 'error') setNotice('failed')
+      if (frame.type === 'error') setNotice(frame.code === 'rate_limited' ? 'slow' : 'failed')
       if (frame.type === 'history') setMessages((m) => mergeMessages(m, frame.messages))
       if (frame.type === 'message') setMessages((m) => mergeMessages(m, [frame.message]))
     })
@@ -101,9 +102,10 @@ export function Widget({ company }: { company: string }) {
     setRecording(false)
     if (!blob) return
     setSendingAudio(true)
-    const message = await uploadAudio(blob)
+    const result = await uploadAudio(blob)
     setSendingAudio(false)
-    if (message) setMessages((m) => mergeMessages(m, [message]))
+    if (result === 'slow') setNotice('slow')
+    else if (result) setMessages((m) => mergeMessages(m, [result]))
     else setNotice('failed')
   }
 
@@ -145,6 +147,7 @@ export function Widget({ company }: { company: string }) {
       </form>
       {notice === 'connecting' && <p role="status" className="widget-notice">Connecting… try again in a moment.</p>}
       {notice === 'failed' && <p role="alert" className="widget-notice">Your message could not be sent.</p>}
+      {notice === 'slow' && <p role="alert" className="widget-notice">You are sending messages too fast. Wait a moment.</p>}
       {notice === 'mic' && <p role="alert" className="widget-notice">Microphone not available. Check the browser permission.</p>}
       {sendingAudio && <p role="status" className="widget-notice">Sending voice message…</p>}
     </section>

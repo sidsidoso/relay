@@ -141,4 +141,11 @@ describe('Widget', () => {
     openWidget()
     expect(screen.getByRole('button', { name: /close chat/i })).toHaveAttribute('type', 'button')
   })
+
+  it('asks the visitor to slow down on a rate_limited frame', () => {
+    render(<Widget company="Acme Coworking" />)
+    fireEvent.click(screen.getByRole('button', { name: /chat with us/i }))
+    act(() => FakeSocket.last.emit({ type: 'error', code: 'rate_limited' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('You are sending messages too fast. Wait a moment.')
+  })
 })

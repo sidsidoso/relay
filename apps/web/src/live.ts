@@ -15,7 +15,7 @@ export function connectLive<F = unknown>(path: string, onFrame: (frame: F) => vo
     ws.onmessage = (e) => { try { onFrame(JSON.parse(e.data) as F) } catch { /* ignore malformed frames */ } }
     ws.onclose = (e) => {
       onClose?.(e.code)
-      if (stopped || e.code === 4401 || e.code === 4400) return
+      if (stopped || e.code === 4401 || e.code === 4400 || e.code === 4403) return
       timer = setTimeout(open, delay)
       delay = Math.min(delay * 2, 10_000)
     }
