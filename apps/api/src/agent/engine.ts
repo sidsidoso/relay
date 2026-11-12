@@ -24,6 +24,22 @@ const RULES = [
   '- Reply in the language the customer writes in. Keep answers short.',
 ].join('\n')
 
+/** For models without tools: facts come only from the passages below, and a person takes over what they do not cover. */
+const TEXT_ONLY_RULES = [
+  'Rules:',
+  '- Answer questions about prices, plans, rooms, hours or the address only from the knowledge base passages below. Never invent prices or facts.',
+  '- If the passages do not answer the question, say that a person from the team will follow up.',
+  '- Reply in the language the customer writes in. Keep answers short.',
+].join('\n')
+
+export const KNOWLEDGE_HEADER = 'Knowledge base passages:'
+
+function passagesBlock(passages: Passage[], query: string): string {
+  const hits = searchKnowledge(passages, query)
+  if (hits.length === 0) return `${KNOWLEDGE_HEADER} none matched.`
+  return `${KNOWLEDGE_HEADER}\n\n${hits.map((h) => `### ${h.title}\n${h.text}`).join('\n\n')}`
+}
+
 class TimeoutError extends Error { constructor() { super('timeout') } }
 
 /** Moves the conversation to the team queue and tells the customer, so they are never left without an answer. */
@@ -104,7 +120,9 @@ export async function runAgentTurn(deps: EngineDeps, conversationId: number): Pr
   if (conversation.agentTurns >= settings.turnLimit) return transfer('Turn limit reached')
   if (pending.some((m) => asksForHuman(wordsOf(m), settings.handoffKeywords))) return transfer('Customer asked for a human')
 
-  const system = `${settings.instructions}\n\n${RULES}`
+  const system = deps.provider.textOnly
+    ? `${settings.instructions}\n\n${TEXT_ONLY_RULES}\n\n${passagesBlock(deps.knowledge(), pending.map(wordsOf).filter(Boolean).join(' '))}`
+    : `${settings.instructions}\n\n${RULES}`
   const chat: ChatMessage[] = messages.slice(-HISTORY_LIMIT).map(toChat)
 
   try {
