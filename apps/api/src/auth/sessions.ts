@@ -1,13 +1,21 @@
 import { randomBytes } from 'node:crypto'
-import { eq } from 'drizzle-orm'
+import { eq, lt } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { sessions, users } from '../db/schema'
 
 export type PublicUser = { id: number; email: string; name: string }
 
 const SESSION_DAYS = 7
+/** The cookie lives exactly as long as the session row. */
+export const SESSION_MAX_AGE_S = SESSION_DAYS * 86_400
+
+/** Deletes sessions past their expiry; returns how many were removed. */
+export function purgeExpiredSessions(db: Db, now = new Date()): number {
+  return db.delete(sessions).where(lt(sessions.expiresAt, now.toISOString())).run().changes
+}
 
 export function createSession(db: Db, userId: number): string {
+  purgeExpiredSessions(db)
   const token = randomBytes(32).toString('base64url')
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000).toISOString()
   db.insert(sessions).values({ token, userId, expiresAt }).run()

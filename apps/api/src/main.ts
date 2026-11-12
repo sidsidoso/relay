@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createDb } from './db/client'
 import { seed } from './db/seed'
+import { purgeExpiredSessions } from './auth/sessions'
 import { EventBus } from './core/events'
 import { ChannelRegistry } from './channels/types'
 import { WidgetChannel } from './channels/widget'
@@ -23,6 +24,7 @@ const file = env('RELAY_DB') ?? 'data/relay.db'
 mkdirSync(dirname(file), { recursive: true })
 const db = createDb(file)
 await seed(db)
+purgeExpiredSessions(db)
 const mediaDir = env('RELAY_MEDIA_DIR') ?? join(dirname(file), 'media')
 mkdirSync(mediaDir, { recursive: true })
 

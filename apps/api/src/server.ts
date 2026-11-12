@@ -7,6 +7,7 @@ import { authRoutes } from './auth/routes'
 import { conversationRoutes } from './core/routes'
 import { settingsRoutes } from './core/settingsRoutes'
 import { inboxSocket } from './realtime/inbox'
+import { SessionSockets } from './realtime/sessionSockets'
 import { widgetAudioRoute, widgetSocket, type WidgetChannel } from './channels/widget'
 import { defaultLimits, type Limits } from './http/rateLimit'
 import { mediaRoutes } from './media/routes'
@@ -31,6 +32,8 @@ export type ServerOptions = {
   allowedOrigins?: string[]
   /** Rate limits; tests pass small ones. */
   limits?: Limits
+  /** How often an open inbox socket re-checks its session (default 60 s). */
+  sessionCheckMs?: number
 }
 
 export async function buildServer(deps: ServerDeps, opts: ServerOptions = {}): Promise<FastifyInstance> {
@@ -43,10 +46,11 @@ export async function buildServer(deps: ServerDeps, opts: ServerOptions = {}): P
   app.setNotFoundHandler(notFoundHandler)
   const limits = opts.limits ?? defaultLimits()
   const allowedOrigins = opts.allowedOrigins ?? []
-  authRoutes(app, deps.db, { loginLimiter: limits.login })
+  const sessions = new SessionSockets()
+  authRoutes(app, deps.db, { loginLimiter: limits.login, sessions })
   conversationRoutes(app, deps)
   settingsRoutes(app, deps.db)
-  inboxSocket(app, deps, { allowedOrigins })
+  inboxSocket(app, deps, { allowedOrigins, sessions, sessionCheckMs: opts.sessionCheckMs })
   if (opts.widget) widgetSocket(app, deps, opts.widget, { allowedOrigins, messageLimiter: limits.widgetMessages })
   if (opts.mediaDir) {
     mediaRoutes(app, deps, opts.mediaDir)
