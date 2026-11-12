@@ -50,6 +50,7 @@ class Engine:
         return self._model is not None
 
     def load(self) -> None:
+        self.error = None
         try:
             self._model = self._loader(self.model_name, self._device, self._compute_type)
         except Exception as exc:  # reported by GET /health instead of crashing the service
