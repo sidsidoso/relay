@@ -82,3 +82,23 @@ describe('inbox routes', () => {
     expect(anon.statusCode).toBe(401)
   })
 })
+
+describe('conversation list pagination', () => {
+  it('pages newest first with a cursor, and rejects a bad cursor', async () => {
+    const { app, deps, login } = await testServer()
+    const headers = { cookie: await login() }
+    for (let i = 1; i <= 5; i++) receiveInbound(deps, { ...hello, contactKey: `v-${i}`, contactName: `C${i}` })
+    const first = await app.inject({ method: 'GET', url: '/api/conversations?limit=2', headers })
+    expect(first.json().conversations.map((c: { contactName: string }) => c.contactName)).toEqual(['C5', 'C4'])
+    const cursor = first.json().nextCursor as string
+    expect(cursor).toEqual(expect.any(String))
+    const second = await app.inject({ method: 'GET', url: `/api/conversations?limit=2&before=${encodeURIComponent(cursor)}`, headers })
+    expect(second.json().conversations.map((c: { contactName: string }) => c.contactName)).toEqual(['C3', 'C2'])
+    const third = await app.inject({ method: 'GET', url: `/api/conversations?limit=2&before=${encodeURIComponent(second.json().nextCursor)}`, headers })
+    expect(third.json()).toMatchObject({ nextCursor: null })
+    expect(third.json().conversations).toHaveLength(1)
+    const bad = await app.inject({ method: 'GET', url: '/api/conversations?before=nope', headers })
+    expect(bad.statusCode).toBe(400)
+    expect(bad.json().code).toBe('invalid_request')
+  })
+})

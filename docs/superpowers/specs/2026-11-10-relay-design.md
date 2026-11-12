@@ -139,7 +139,7 @@ Inbound messages are normalized to `{ channel, contactKey, type: 'text' | 'audio
 - `agent_runs` — `id, conversation_id, provider, model, duration_ms, input_tokens, output_tokens, outcome, error, created_at`.
 - `settings` — agent instructions, handoff keywords, turn limit, handoff message, transcription on/off.
 
-Audio files live in `data/media` (a Docker volume). The knowledge base lives in `data/knowledge/*.md`, editable from the settings screen.
+Audio files live in `data/media` (a Docker volume). The knowledge base lives in `data/knowledge/*.md`, editable from the settings screen, seeded from `apps/api/knowledge` on first start; names are lowercase `a-z0-9-` ending in `.md`, at most 50 files of 100 KB.
 
 ## 8. Authentication
 
@@ -162,7 +162,7 @@ Login with an httpOnly session cookie. A single role (team member). The demo pag
 - Agent turn: any provider error becomes a handoff with a recorded reason; a run is always logged.
 - Transcription: as described in section 5; it never blocks or crashes a turn.
 - WebSocket: the widget and the inbox reconnect with backoff and refetch the conversation after reconnecting, so no message is lost.
-- API: input validated at the edge (zod); errors return `{ error, code }` with a stable code.
+- API: input validated at the edge (zod); errors return `{ error, code }` with a stable code. Validation errors also list the offending `fields`.
 
 ## 11. Testing
 

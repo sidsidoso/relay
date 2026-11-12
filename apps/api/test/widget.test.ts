@@ -45,7 +45,7 @@ describe('/ws/widget', () => {
     const echo = await next()
     expect(echo).toMatchObject({ type: 'message', message: { sender: 'contact', text: 'Hi there' } })
 
-    const [conv] = listConversations(deps, {})
+    const [conv] = listConversations(deps, {}).conversations
     expect(conv).toMatchObject({ contactName: 'Ana', channel: 'widget' })
 
     await teamReply(deps, conv!.id, 1, 'Hello Ana')

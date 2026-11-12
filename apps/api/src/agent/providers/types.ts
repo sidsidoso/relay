@@ -10,6 +10,12 @@ export type GenerateRequest = { system: string; messages: ChatMessage[]; tools: 
 export type GenerateResult =
   | { kind: 'text'; text: string; usage?: Usage }
   | { kind: 'tool_calls'; calls: ToolCall[]; text?: string; usage?: Usage; raw?: unknown }
-export interface Provider { readonly id: string; readonly model: string | null; generate(req: GenerateRequest): Promise<GenerateResult> }
+export interface Provider {
+  readonly id: string
+  readonly model: string | null
+  /** True when the model cannot call tools; the engine then puts knowledge passages in the prompt (spec §4). */
+  readonly textOnly?: boolean
+  generate(req: GenerateRequest): Promise<GenerateResult>
+}
 /** The subset of `fetch` the adapters use; tests pass a stub. */
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>

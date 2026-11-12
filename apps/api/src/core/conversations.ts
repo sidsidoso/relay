@@ -1,4 +1,4 @@
-import { and, desc, eq, ne, sql } from 'drizzle-orm'
+import { and, desc, eq, lt, ne, or, sql } from 'drizzle-orm'
 import type { Db } from '../db/client'
 import { contacts, conversations, messages, users } from '../db/schema'
 import type { EventBus } from './events'
@@ -68,25 +68,51 @@ export function receiveInbound(deps: CoreDeps, msg: InboundMessage): { conversat
   return { conversation, message }
 }
 
+export type Cursor = { updatedAt: string; id: number }
+export const encodeCursor = (c: Cursor) => Buffer.from(JSON.stringify(c)).toString('base64url')
+export function decodeCursor(s: string): Cursor | null {
+  try {
+    const v = JSON.parse(Buffer.from(s, 'base64url').toString('utf8'))
+    return typeof v?.updatedAt === 'string' && Number.isInteger(v?.id) ? { updatedAt: v.updatedAt, id: v.id } : null
+  } catch {
+    return null
+  }
+}
+
+export const DEFAULT_PAGE = 50
+
+/** Newest first, `limit` per page; `before` continues after the last item of the previous page. */
 export function listConversations(
-  deps: CoreDeps, filter: { status?: Conversation['status']; assigneeId?: number },
-): ConversationSummary[] {
+  deps: CoreDeps,
+  filter: { status?: Conversation['status']; assigneeId?: number },
+  page: { limit?: number; before?: Cursor } = {},
+): { conversations: ConversationSummary[]; nextCursor: string | null } {
+  const limit = page.limit ?? DEFAULT_PAGE
   const where = and(
     filter.status ? eq(conversations.status, filter.status) : undefined,
     filter.assigneeId !== undefined ? eq(conversations.assigneeId, filter.assigneeId) : undefined,
+    page.before
+      ? or(lt(conversations.updatedAt, page.before.updatedAt),
+        and(eq(conversations.updatedAt, page.before.updatedAt), lt(conversations.id, page.before.id)))
+      : undefined,
   )
   const lastMessage = sql<string | null>`(
     SELECT coalesce(m.text, '[audio]') FROM messages m
     WHERE m.conversation_id = ${conversations.id} ORDER BY m.id DESC LIMIT 1)`
-  return deps.db.select({
+  const rows = deps.db.select({
     conversation: conversations, contactName: contacts.name, assigneeName: users.name, lastMessage,
   }).from(conversations)
     .innerJoin(contacts, eq(contacts.id, conversations.contactId))
     .leftJoin(users, eq(users.id, conversations.assigneeId))
     .where(where)
     .orderBy(desc(conversations.updatedAt), desc(conversations.id))
+    .limit(limit + 1)
     .all()
     .map((r) => ({ ...r.conversation, contactName: r.contactName, assigneeName: r.assigneeName, lastMessage: r.lastMessage }))
+  const more = rows.length > limit
+  const items = more ? rows.slice(0, limit) : rows
+  const last = items[items.length - 1]
+  return { conversations: items, nextCursor: more && last ? encodeCursor({ updatedAt: last.updatedAt, id: last.id }) : null }
 }
 
 export function getConversation(deps: CoreDeps, id: number) {

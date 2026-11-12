@@ -23,8 +23,11 @@ export type InboxFrame =
   | { event: 'agent.run.created'; data: { conversationId: number; run: AgentRun } }
 
 export class ApiError extends Error {
-  constructor(public status: number, public code: string) { super(code) }
+  constructor(public status: number, public code: string, public fields: string[] = []) { super(code) }
 }
+
+export type Settings = { instructions: string; handoffKeywords: string[]; turnLimit: number; handoffMessage: string; transcriptionEnabled: boolean }
+export type KnowledgeFile = { name: string; bytes: number; updatedAt: string }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, {
@@ -34,12 +37,14 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   })
   if (res.status === 204) return undefined as T
   const body = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError(res.status, body.code ?? 'error')
+  if (!res.ok) throw new ApiError(res.status, body.code ?? 'error', Array.isArray(body.fields) ? body.fields : [])
   return body as T
 }
 
 const post = <T>(path: string, body?: unknown) =>
   call<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) })
+const put = <T>(path: string, body: unknown) => call<T>(path, { method: 'PUT', body: JSON.stringify(body) })
+const del = (path: string) => call<void>(path, { method: 'DELETE' })
 
 const FILTER_QUERY: Record<Filter, string> = { all: '', waiting_human: '?status=waiting_human', mine: '?mine=1', closed: '?status=closed' }
 
@@ -47,13 +52,25 @@ export const api = {
   me: () => call<{ user: User }>('/api/auth/me'),
   login: (email: string, password: string) => post<{ user: User }>('/api/auth/login', { email, password }),
   logout: () => post<void>('/api/auth/logout'),
-  list: (filter: Filter) => call<{ conversations: ConversationSummary[] }>(`/api/conversations${FILTER_QUERY[filter]}`),
+  list: (filter: Filter, page: { before?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams(FILTER_QUERY[filter].replace(/^\?/, ''))
+    if (page.before) q.set('before', page.before)
+    if (page.limit) q.set('limit', String(page.limit))
+    const qs = q.toString()
+    return call<{ conversations: ConversationSummary[]; nextCursor: string | null }>(`/api/conversations${qs ? `?${qs}` : ''}`)
+  },
   get: (id: number) => call<{ conversation: Conversation; contact: Contact; messages: Message[] }>(`/api/conversations/${id}`),
   assign: (id: number) => post<{ conversation: Conversation }>(`/api/conversations/${id}/assign`),
   handBack: (id: number) => post<{ conversation: Conversation }>(`/api/conversations/${id}/hand-back`),
   close: (id: number) => post<{ conversation: Conversation }>(`/api/conversations/${id}/close`),
   reply: (id: number, text: string) => post<{ message: Message }>(`/api/conversations/${id}/messages`, { text }),
   agentRuns: (id: number) => call<{ runs: AgentRun[] }>(`/api/conversations/${id}/agent-runs`),
+  settings: () => call<{ settings: Settings }>('/api/settings'),
+  saveSettings: (patch: Partial<Settings>) => put<{ settings: Settings }>('/api/settings', patch),
+  knowledgeList: () => call<{ files: KnowledgeFile[] }>('/api/knowledge'),
+  knowledgeFile: (name: string) => call<{ name: string; content: string }>(`/api/knowledge/${encodeURIComponent(name)}`),
+  saveKnowledge: (name: string, content: string) => put<{ file: KnowledgeFile }>(`/api/knowledge/${encodeURIComponent(name)}`, { content }),
+  deleteKnowledge: (name: string) => del(`/api/knowledge/${encodeURIComponent(name)}`),
 }
 
 /** The stored voice message, for the inbox audio player (cookie-authenticated). */

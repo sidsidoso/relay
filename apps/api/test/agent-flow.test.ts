@@ -75,7 +75,7 @@ describe('voice messages over the widget', () => {
       method: 'POST', url: '/api/widget/audio', payload: Buffer.from('fake opus'),
       headers: { 'content-type': 'audio/webm;codecs=opus', [VISITOR_HEADER]: TOKEN },
     })
-    const conversation = () => getConversation(core, listConversations(core, {})[0]!.id)!
+    const conversation = () => getConversation(core, listConversations(core, {}).conversations[0]!.id)!
     const done = async () => {
       retry.stop()
       queue.stop()

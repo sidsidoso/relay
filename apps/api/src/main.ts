@@ -9,7 +9,7 @@ import { WidgetChannel } from './channels/widget'
 import { WhatsAppChannel } from './channels/whatsapp'
 import { buildServer } from './server'
 import { agentTimeoutMs, selectProvider } from './agent/providers'
-import { loadKnowledge } from './agent/knowledge'
+import { KnowledgeStore, seedKnowledge } from './agent/knowledgeStore'
 import { AgentQueue } from './agent/queue'
 import { makeTurnRunner } from './agent/turn'
 import { HttpTranscriber } from './transcription/client'
@@ -32,24 +32,26 @@ channels.register(new WhatsAppChannel())
 
 const provider = selectProvider(process.env)
 const timeoutMs = agentTimeoutMs(process.env, provider)
-const knowledgeDir = env('RELAY_KNOWLEDGE_DIR') ?? fileURLToPath(new URL('../knowledge', import.meta.url))
-const knowledge = loadKnowledge(knowledgeDir)
+// Editable copy in the data folder (a Docker volume); the files shipped in apps/api/knowledge seed it on first start.
+const knowledgeDir = env('RELAY_KNOWLEDGE_DIR') ?? join(dirname(file), 'knowledge')
+const seeded = seedKnowledge(knowledgeDir, fileURLToPath(new URL('../knowledge', import.meta.url)))
+const knowledge = new KnowledgeStore(knowledgeDir)
 
 const transcriberUrl = env('TRANSCRIBER_URL')
 const transcriber = transcriberUrl ? new HttpTranscriber({ url: transcriberUrl, language: env('RELAY_TRANSCRIBER_LANGUAGE') }) : null
 const retry = transcriber ? new OfflineRetry(transcriber, (id) => queue.schedule(id)) : null
 const runTurn = makeTurnRunner({
-  db, bus, channels, provider, knowledge: () => knowledge, timeoutMs, transcriber, mediaDir,
+  db, bus, channels, provider, knowledge: () => knowledge.passages(), timeoutMs, transcriber, mediaDir,
   onTranscriberOffline: (id) => retry?.add(id),
 })
 const queue = new AgentQueue(runTurn, bus)
 queue.start()
-console.log(`[relay] agent provider: ${provider.id} (${provider.model ?? 'n/a'}), timeout ${timeoutMs} ms, knowledge passages: ${knowledge.length}`)
+console.log(`[relay] agent provider: ${provider.id} (${provider.model ?? 'n/a'}), timeout ${timeoutMs} ms, knowledge: ${knowledge.list().length} files in ${knowledgeDir}${seeded ? ` (seeded ${seeded})` : ''}`)
 console.log(transcriberUrl
   ? `[relay] transcription: ${transcriberUrl}, media in ${mediaDir}`
   : `[relay] transcription: off (TRANSCRIBER_URL is not set); voice messages are stored in ${mediaDir} and reach the agent as [audio]`)
 
-const app = await buildServer({ db, bus, channels }, { widget, mediaDir })
+const app = await buildServer({ db, bus, channels }, { widget, mediaDir, knowledge })
 const port = Number(process.env.PORT ?? 3000)
 await app.listen({ port, host: process.env.HOST ?? '0.0.0.0' })
 console.log(`[relay] api listening on :${port}`)

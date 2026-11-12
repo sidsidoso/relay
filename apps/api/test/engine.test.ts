@@ -9,9 +9,9 @@ import { ChannelRegistry } from '../src/channels/types'
 import { receiveInbound, getConversation, assign, postOutbound } from '../src/core/conversations'
 import { loadKnowledge } from '../src/agent/knowledge'
 import { DemoProvider } from '../src/agent/providers/demo'
-import { runAgentTurn, type EngineDeps } from '../src/agent/engine'
+import { runAgentTurn, KNOWLEDGE_HEADER, type EngineDeps } from '../src/agent/engine'
 import { listRuns } from '../src/agent/runs'
-import type { ChatMessage, Provider } from '../src/agent/providers/types'
+import type { ChatMessage, GenerateRequest, Provider } from '../src/agent/providers/types'
 
 const KB = loadKnowledge(fileURLToPath(new URL('../knowledge', import.meta.url)))
 let deps: EngineDeps
@@ -201,5 +201,39 @@ describe('runAgentTurn', () => {
     // Same contact key, same conversation: this is the next turn.
     expect((await runAgentTurn(deps, ask('Can I talk to a real person?'))).outcome).toBe('transferred')
     expect(calls).toBe(1)
+  })
+})
+
+describe('text-only providers', () => {
+  function capturing(textOnly: boolean) {
+    const seen: GenerateRequest[] = []
+    const provider: Provider = {
+      id: 'fake', model: null, textOnly,
+      async generate(req) { seen.push(req); return { kind: 'text', text: 'ok' } },
+    }
+    return { provider, seen }
+  }
+
+  it('get the passages that match the pending messages in the system prompt', async () => {
+    const { provider, seen } = capturing(true)
+    const { conversation } = receiveInbound(deps, { channel: 'widget', contactKey: 't-1', type: 'text', text: 'How much is a meeting room per hour?' })
+    await runAgentTurn({ ...deps, provider }, conversation.id)
+    expect(seen[0]!.system).toContain(KNOWLEDGE_HEADER)
+    expect(seen[0]!.system).toContain('Meeting rooms')
+    expect(seen[0]!.system).toContain('$20 per hour')
+  })
+
+  it('say so when nothing matched', async () => {
+    const { provider, seen } = capturing(true)
+    const { conversation } = receiveInbound(deps, { channel: 'widget', contactKey: 't-2', type: 'text', text: 'zzzz qqqq' })
+    await runAgentTurn({ ...deps, provider }, conversation.id)
+    expect(seen[0]!.system).toContain(`${KNOWLEDGE_HEADER} none matched`)
+  })
+
+  it('tool-capable providers keep using search_knowledge and get no passages', async () => {
+    const { provider, seen } = capturing(false)
+    const { conversation } = receiveInbound(deps, { channel: 'widget', contactKey: 't-3', type: 'text', text: 'How much is a meeting room per hour?' })
+    await runAgentTurn({ ...deps, provider }, conversation.id)
+    expect(seen[0]!.system).not.toContain(KNOWLEDGE_HEADER)
   })
 })
