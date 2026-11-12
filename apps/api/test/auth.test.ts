@@ -57,7 +57,7 @@ describe('auth', () => {
     const { app } = await testServer()
     const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 1 } })
     expect(res.statusCode).toBe(400)
-    expect(res.json().code).toBe('invalid_body')
+    expect(res.json().code).toBe('invalid_request')
   })
 
   it('/me without a session is 401', async () => {

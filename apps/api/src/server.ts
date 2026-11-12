@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket'
 import { registerErrorHandler } from './http/errors'
 import { authRoutes } from './auth/routes'
 import { conversationRoutes } from './core/routes'
+import { settingsRoutes } from './core/settingsRoutes'
 import { inboxSocket } from './realtime/inbox'
 import { widgetAudioRoute, widgetSocket, type WidgetChannel } from './channels/widget'
 import { mediaRoutes } from './media/routes'
@@ -22,6 +23,7 @@ export async function buildServer(deps: ServerDeps, opts: { widget?: WidgetChann
   registerErrorHandler(app)
   authRoutes(app, deps.db)
   conversationRoutes(app, deps)
+  settingsRoutes(app, deps.db)
   inboxSocket(app, deps)
   if (opts.widget) widgetSocket(app, deps, opts.widget)
   if (opts.mediaDir) {

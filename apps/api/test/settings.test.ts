@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { createDb } from '../src/db/client'
 import { seed } from '../src/db/seed'
 import { settings } from '../src/db/schema'
-import { agentSettings, transcriptionEnabled } from '../src/core/settings'
+import { agentSettings, transcriptionEnabled, readSettings, updateSettings } from '../src/core/settings'
 
 describe('agentSettings', () => {
   it('reads the seeded defaults', async () => {
@@ -38,5 +38,32 @@ describe('agentSettings', () => {
     db.update(settings).set({ value: ['human', 'agent'] }).where(eq(settings.key, 'agent.handoffKeywords')).run()
     await seed(db)
     expect(agentSettings(db).handoffKeywords).toEqual(['human', 'agent'])
+  })
+})
+
+describe('readSettings / updateSettings', () => {
+  it('reads every setting, typed', async () => {
+    const db = createDb(':memory:')
+    await seed(db)
+    expect(readSettings(db)).toMatchObject({ turnLimit: 10, transcriptionEnabled: true })
+    expect(typeof readSettings(db).instructions).toBe('string')
+  })
+
+  it('updates only the fields in the patch and returns the new settings', async () => {
+    const db = createDb(':memory:')
+    await seed(db)
+    const before = readSettings(db)
+    const after = updateSettings(db, { turnLimit: 4, transcriptionEnabled: false })
+    expect(after).toEqual({ ...before, turnLimit: 4, transcriptionEnabled: false })
+    expect(transcriptionEnabled(db)).toBe(false)
+    expect(agentSettings(db).turnLimit).toBe(4)
+  })
+
+  it('trims text and keywords', async () => {
+    const db = createDb(':memory:')
+    await seed(db)
+    const s = updateSettings(db, { handoffMessage: '  Hold on  ', handoffKeywords: [' human ', 'manager'] })
+    expect(s.handoffMessage).toBe('Hold on')
+    expect(s.handoffKeywords).toEqual(['human', 'manager'])
   })
 })

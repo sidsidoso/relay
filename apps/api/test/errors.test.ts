@@ -45,6 +45,6 @@ describe('error handler', () => {
     const cookie = await login()
     const res = await app.inject({ method: 'GET', url: '/api/conversations/abc', headers: { cookie } })
     expect(res.statusCode).toBe(400)
-    expect(res.json()).toEqual({ error: 'Invalid request', code: 'invalid_request' })
+    expect(res.json()).toEqual({ error: 'Invalid request', code: 'invalid_request', fields: ['id'] })
   })
 })

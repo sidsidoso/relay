@@ -32,8 +32,7 @@ export function authRoutes(app: FastifyInstance, db: Db) {
   }
 
   app.post('/api/auth/login', async (req, reply) => {
-    const body = LoginBody.safeParse(req.body)
-    if (!body.success) return reply.code(400).send({ error: 'Invalid body', code: 'invalid_body' })
+    const body = { data: LoginBody.parse(req.body) } // a ZodError becomes 400 invalid_request in the error handler
     const u = db.select().from(users).where(eq(users.email, body.data.email.toLowerCase())).get()
     let ok = false
     if (u) {
