@@ -50,7 +50,7 @@ describe('POST /api/widget/audio', () => {
     expect(res.statusCode).toBe(201)
     const { message } = res.json()
     expect(message).toEqual({ id: expect.any(Number), sender: 'contact', type: 'audio', text: null, createdAt: expect.any(String) })
-    const [conv] = listConversations(deps, {})
+    const [conv] = listConversations(deps, {}).conversations
     const found = getConversation(deps, conv!.id)!
     const stored = found.messages[0]!
     expect(stored).toMatchObject({ type: 'audio', mediaMime: 'audio/webm', transcription: null })
@@ -71,7 +71,7 @@ describe('POST /api/widget/audio', () => {
     expect(res.statusCode).toBe(status)
     expect(res.json()).toMatchObject({ code })
     expect(readdirSync(mediaDir)).toEqual([])
-    expect(listConversations(deps, {})).toEqual([])
+    expect(listConversations(deps, {}).conversations).toEqual([])
   })
 
   it('rejects an empty body and a body over the limit', async () => {
@@ -90,7 +90,7 @@ describe('visitor messages', () => {
   it('history frames carry no internal fields', async () => {
     const { app, deps, upload } = await setup()
     await upload(OPUS)
-    const [conv] = listConversations(deps, {})
+    const [conv] = listConversations(deps, {}).conversations
     await teamReply(deps, conv!.id, 1, 'We got your audio')
     const ws = await app.injectWS(`/ws/widget?token=${TOKEN}`)
     const history = await new Promise<any>((resolve) => ws.once('message', (d: Buffer) => resolve(JSON.parse(d.toString()))))
@@ -105,7 +105,7 @@ describe('GET /api/conversations/:id/messages/:messageId/audio', () => {
   it('sends the stored audio to a signed-in team member', async () => {
     const { app, deps, upload, login } = await setup()
     const { message } = (await upload(OPUS)).json()
-    const [conv] = listConversations(deps, {})
+    const [conv] = listConversations(deps, {}).conversations
     const url = `/api/conversations/${conv!.id}/messages/${message.id}/audio`
     expect((await app.inject({ url })).statusCode).toBe(401)
     const res = await app.inject({ url, headers: { cookie: await login() } })
@@ -118,7 +118,7 @@ describe('GET /api/conversations/:id/messages/:messageId/audio', () => {
     const { app, deps, upload, login, mediaDir } = await setup()
     const cookie = await login()
     const { message } = (await upload(OPUS)).json()
-    const [conv] = listConversations(deps, {})
+    const [conv] = listConversations(deps, {}).conversations
     const text = receiveInbound(deps, { channel: 'widget', contactKey: 'other', type: 'text', text: 'hi' })
     const get = (c: number, m: number) => app.inject({ url: `/api/conversations/${c}/messages/${m}/audio`, headers: { cookie } })
     expect((await get(text.conversation.id, text.message.id)).statusCode).toBe(404)

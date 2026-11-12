@@ -51,17 +51,17 @@ describe('inbox actions', () => {
   it('lists with contact name and last message, newest first, filtered by status', () => {
     receiveInbound(deps, hello)
     const second = receiveInbound(deps, { ...hello, contactKey: 'v-2', contactName: 'Bruno', text: 'Price?' })
-    const list = listConversations(deps, {})
+    const list = listConversations(deps, {}).conversations
     expect(list.map((c) => c.contactName)).toEqual(['Bruno', 'Ana'])
     expect(list[0]!.lastMessage).toBe('Price?')
     close(deps, second.conversation.id)
-    expect(listConversations(deps, { status: 'closed' })).toHaveLength(1)
+    expect(listConversations(deps, { status: 'closed' }).conversations).toHaveLength(1)
   })
 
   it('assign, hand back and close change status and assignee', () => {
     const { conversation } = receiveInbound(deps, hello)
     expect(assign(deps, conversation.id, 1)).toMatchObject({ assigneeId: 1, status: 'open' })
-    expect(listConversations(deps, { assigneeId: 1 })[0]!.assigneeName).toBe('Demo Agent')
+    expect(listConversations(deps, { assigneeId: 1 }).conversations[0]!.assigneeName).toBe('Demo Agent')
     expect(handBack(deps, conversation.id)).toMatchObject({ assigneeId: null, status: 'open' })
     expect(close(deps, conversation.id)).toMatchObject({ status: 'closed' })
   })
@@ -145,7 +145,7 @@ describe('outbound path and status rules', () => {
 
   it('an audio message without text is listed as [audio]', () => {
     receiveInbound(deps, { channel: 'widget', contactKey: 'v-9', type: 'audio', mediaPath: 'a.webm', mediaMime: 'audio/webm' })
-    expect(listConversations(deps, {})[0]!.lastMessage).toBe('[audio]')
+    expect(listConversations(deps, {}).conversations[0]!.lastMessage).toBe('[audio]')
   })
 
   it('an inbound message updates the contact name', () => {

@@ -2,13 +2,19 @@ import type { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
 import { makeRequireUser } from '../auth/guard'
 import {
-  assign, close, getConversation, handBack, listConversations, teamReply, NotFoundError, type CoreDeps,
+  assign, close, decodeCursor, getConversation, handBack, listConversations, teamReply, NotFoundError, type CoreDeps,
 } from './conversations'
 import { listRuns } from '../agent/runs'
 
 const ListQuery = z.object({
   status: z.enum(['open', 'waiting_human', 'closed']).optional(),
   mine: z.literal('1').optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  before: z.string().transform((s, ctx) => {
+    const c = decodeCursor(s)
+    if (!c) ctx.addIssue({ code: 'custom', message: 'bad cursor' })
+    return c ?? undefined
+  }).optional(),
 })
 const IdParams = z.object({ id: z.coerce.number().int().positive() })
 const ReplyBody = z.object({ text: z.string().trim().min(1).max(4000) })
@@ -22,7 +28,9 @@ export function conversationRoutes(app: FastifyInstance, deps: CoreDeps) {
 
   app.get('/api/conversations', { preHandler: requireUser }, async (req) => {
     const q = ListQuery.parse(req.query)
-    return { conversations: listConversations(deps, { status: q.status, assigneeId: q.mine ? req.user!.id : undefined }) }
+    return listConversations(deps,
+      { status: q.status, assigneeId: q.mine ? req.user!.id : undefined },
+      { limit: q.limit, before: q.before })
   })
 
   app.get('/api/conversations/:id', { preHandler: requireUser }, async (req, reply) => {
