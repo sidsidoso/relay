@@ -10,3 +10,8 @@ it('shows the demo credentials', () => {
   expect(screen.getByText('demo@relay.dev')).toBeInTheDocument()
   expect(screen.getByText('relay-demo')).toBeInTheDocument()
 })
+
+it('says that demo conversations are visible to anyone', () => {
+  render(<Demo />)
+  expect(screen.getByText(/public demo/i)).toBeInTheDocument()
+})

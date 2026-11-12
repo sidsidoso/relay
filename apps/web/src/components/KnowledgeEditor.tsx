@@ -43,8 +43,11 @@ export function KnowledgeEditor({ onExpired }: { onExpired: () => void }) {
   function create() {
     const raw = newName.trim().toLowerCase().endsWith('.md') ? newName.trim() : `${newName.trim()}.md`
     if (!NAME.test(raw)) { setError(MESSAGES.invalid_name!); return }
+    setNewName('')
+    // An existing name opens that file: a blank editor would overwrite it on save.
+    if (files.some((f) => f.name === raw)) { void select(raw); return }
     if (!leave()) return
-    setError(null); setStatus('idle'); setNewName('')
+    setError(null); setStatus('idle')
     setOpen({ name: raw, content: '', saved: '', isNew: true })
   }
 

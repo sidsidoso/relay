@@ -11,6 +11,9 @@ export function Demo() {
         <p className="demo-credentials">
           Demo sign-in: <code>{DEMO_CREDENTIALS.email}</code> / <code>{DEMO_CREDENTIALS.password}</code>
         </p>
+        <p className="demo-notice">
+          This is a public demo: anyone who signs in to the inbox can read the conversations started here. Do not share personal data.
+        </p>
       </main>
       <Widget company="Acme Coworking" />
     </div>

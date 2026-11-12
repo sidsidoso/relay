@@ -66,4 +66,13 @@ describe('KnowledgeEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /save file/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/too large/i)
   })
+
+  it('opens the existing file instead of a blank one when the new name is taken', async () => {
+    render(<KnowledgeEditor onExpired={vi.fn()} />)
+    await screen.findByRole('button', { name: 'acme-coworking.md' })
+    fireEvent.change(screen.getByLabelText(/new file name/i), { target: { value: 'acme-coworking' } })
+    fireEvent.click(screen.getByRole('button', { name: 'New file' }))
+    expect(await screen.findByLabelText(/content of acme-coworking.md/i)).toHaveValue('# Acme\n')
+    expect(mocked.knowledgeFile).toHaveBeenCalledWith('acme-coworking.md')
+  })
 })

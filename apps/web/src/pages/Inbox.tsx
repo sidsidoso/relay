@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { api, ApiError, type AgentRun, type Contact, type Conversation, type ConversationSummary, type Filter, type InboxFrame, type Message, type User } from '../api'
 import { connectLive } from '../live'
+import { mergeRefresh } from '../inboxList'
 import { ConversationList } from '../components/ConversationList'
 import { Timeline } from '../components/Timeline'
 import { AgentActivity } from '../components/AgentActivity'
@@ -41,12 +42,19 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
   // A live refresh reloads at least as many rows as are loaded, so it does not drop pages the user opened.
   const itemsCountRef = useRef(0)
   itemsCountRef.current = items.length
+  const itemsRef = useRef<ConversationSummary[]>([])
+  itemsRef.current = items
+  const nextCursorRef = useRef<string | null>(null)
+  nextCursorRef.current = nextCursor
   const refreshList = useCallback(async () => {
     const wanted = filter
     try {
       const limit = Math.min(100, Math.max(50, itemsCountRef.current))
       const r = await api.list(wanted, limit > 50 ? { limit } : {})
-      if (filterRef.current === wanted) { setItems(r.conversations); setNextCursor(r.nextCursor) }
+      if (filterRef.current !== wanted) return
+      const merged = mergeRefresh(itemsRef.current, nextCursorRef.current, r.conversations, r.nextCursor)
+      setItems(merged.items)
+      setNextCursor(merged.nextCursor)
     } catch (err) { expired(err) }
   }, [filter, expired])
 
@@ -180,7 +188,7 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
         </header>
         <nav className="filters">
           {FILTERS.map(([f, label]) => (
-            <button key={f} className={f === filter ? 'active' : ''} aria-pressed={f === filter} onClick={() => setFilter(f)}>{label}</button>
+            <button key={f} className={f === filter ? 'active' : ''} aria-pressed={f === filter} onClick={() => { if (f !== filter) { setItems([]); setNextCursor(null); setFilter(f) } }}>{label}</button>
           ))}
         </nav>
         <ConversationList items={items} selectedId={selectedId} onSelect={select} />
