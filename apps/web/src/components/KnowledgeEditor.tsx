@@ -31,24 +31,37 @@ export function KnowledgeEditor({ onExpired }: { onExpired: () => void }) {
   const dirty = open !== null && open.content !== open.saved
   const leave = () => !dirty || window.confirm('Discard unsaved changes?')
 
-  async function select(name: string) {
-    if (open?.name === name || !leave()) return
+  // Resolves true when the file is (now) open. `known` skips the fetch when the caller already has it.
+  async function select(name: string, known?: { name: string; content: string }): Promise<boolean> {
+    if (open?.name === name) return true
+    if (!leave()) return false
     setError(null); setStatus('idle')
     try {
-      const f = await api.knowledgeFile(name)
+      const f = known ?? await api.knowledgeFile(name)
       setOpen({ name: f.name, content: f.content, saved: f.content, isNew: false })
-    } catch (err) { fail(err, 'Could not open the file.') }
+      return true
+    } catch (err) { fail(err, 'Could not open the file.'); return false }
   }
 
-  function create() {
+  async function create() {
     const raw = newName.trim().toLowerCase().endsWith('.md') ? newName.trim() : `${newName.trim()}.md`
     if (!NAME.test(raw)) { setError(MESSAGES.invalid_name!); return }
-    setNewName('')
-    // An existing name opens that file: a blank editor would overwrite it on save.
-    if (files.some((f) => f.name === raw)) { void select(raw); return }
+    if (open?.name === raw) { setNewName(''); return }
+    // The server decides: a blank editor over an existing name would overwrite it on save.
+    let existing: { name: string; content: string } | null = null
+    try {
+      existing = await api.knowledgeFile(raw)
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 404)) { fail(err, 'Could not check whether the file exists.'); return }
+    }
+    if (existing) {
+      if (await select(raw, existing)) setNewName('')
+      return
+    }
     if (!leave()) return
     setError(null); setStatus('idle')
     setOpen({ name: raw, content: '', saved: '', isNew: true })
+    setNewName('')
   }
 
   async function save() {
@@ -115,7 +128,7 @@ export function KnowledgeEditor({ onExpired }: { onExpired: () => void }) {
       </div>
       <div className="settings-actions">
         <label>New file name <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="parking" /></label>
-        <button type="button" onClick={create}>New file</button>
+        <button type="button" onClick={() => void create()}>New file</button>
       </div>
       {error && <p role="alert" className="error">{error}</p>}
     </section>

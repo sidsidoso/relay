@@ -41,6 +41,7 @@ describe('KnowledgeEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /new file/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/lowercase letters, digits and dashes/i)
     fireEvent.change(name, { target: { value: 'parking' } })
+    mocked.knowledgeFile.mockRejectedValueOnce(new ApiError(404, 'not_found'))
     fireEvent.click(screen.getByRole('button', { name: /new file/i }))
     const editor = await screen.findByLabelText(/content of parking.md/i)
     fireEvent.change(editor, { target: { value: '# Parking\n' } })
@@ -74,5 +75,30 @@ describe('KnowledgeEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'New file' }))
     expect(await screen.findByLabelText(/content of acme-coworking.md/i)).toHaveValue('# Acme\n')
     expect(mocked.knowledgeFile).toHaveBeenCalledWith('acme-coworking.md')
+  })
+
+  it('opens the real file when New file is clicked before the list has loaded', async () => {
+    let release!: (v: { files: ReturnType<typeof file>[] }) => void
+    mocked.knowledgeList.mockReturnValue(new Promise((r) => { release = r }))
+    render(<KnowledgeEditor onExpired={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(/new file name/i), { target: { value: 'acme-coworking' } })
+    fireEvent.click(screen.getByRole('button', { name: 'New file' }))
+    const editor = await screen.findByLabelText(/content of acme-coworking.md/i)
+    expect(editor).toHaveValue('# Acme\n')
+    expect(screen.queryByText(/unsaved changes/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/new file name/i)).toHaveValue('')
+    release({ files: [file('acme-coworking.md')] })
+    await screen.findByRole('button', { name: 'acme-coworking.md' })
+  })
+
+  it('keeps the typed name and opens no blank editor when the existence check fails', async () => {
+    mocked.knowledgeFile.mockRejectedValue(new ApiError(500, 'server_error'))
+    render(<KnowledgeEditor onExpired={vi.fn()} />)
+    await screen.findByRole('button', { name: 'acme-coworking.md' })
+    fireEvent.change(screen.getByLabelText(/new file name/i), { target: { value: 'parking' } })
+    fireEvent.click(screen.getByRole('button', { name: 'New file' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/content of parking.md/i)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(/new file name/i)).toHaveValue('parking')
   })
 })
