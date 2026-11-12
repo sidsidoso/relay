@@ -151,6 +151,7 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
       <aside className="col-list">
         <header className="topbar">
           <strong>Relay</strong>
+          <a href="/settings">Settings</a>
           <span>{user.name}</span>
           <button onClick={() => void logout()}>Sign out</button>
         </header>
