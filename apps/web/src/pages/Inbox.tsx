@@ -20,6 +20,9 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
   const [replyError, setReplyError] = useState(false)
   const [actionError, setActionError] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const sendingRef = useRef(false)
 
   // Refs keep one socket for the whole session and let async responses check they are still current.
   const selectedRef = useRef(selectedId)
@@ -35,13 +38,28 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
     return false
   }, [])
 
+  // A live refresh reloads at least as many rows as are loaded, so it does not drop pages the user opened.
+  const itemsCountRef = useRef(0)
+  itemsCountRef.current = items.length
   const refreshList = useCallback(async () => {
     const wanted = filter
     try {
-      const r = await api.list(wanted)
-      if (filterRef.current === wanted) setItems(r.conversations)
+      const limit = Math.min(100, Math.max(50, itemsCountRef.current))
+      const r = await api.list(wanted, limit > 50 ? { limit } : {})
+      if (filterRef.current === wanted) { setItems(r.conversations); setNextCursor(r.nextCursor) }
     } catch (err) { expired(err) }
   }, [filter, expired])
+
+  async function loadMore() {
+    const wanted = filter
+    if (!nextCursor) return
+    try {
+      const r = await api.list(wanted, { before: nextCursor })
+      if (filterRef.current !== wanted) return
+      setItems((xs) => [...xs, ...r.conversations.filter((c) => !xs.some((x) => x.id === c.id))])
+      setNextCursor(r.nextCursor)
+    } catch (err) { expired(err) }
+  }
 
   const refreshDetail = useCallback(async () => {
     const id = selectedId
@@ -127,16 +145,21 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
     e.preventDefault()
     const text = draft.trim()
     const id = selectedId
-    if (!id || !text) return
+    if (!id || !text || sendingRef.current) return
+    sendingRef.current = true
+    setSending(true)
     setReplyError(false)
     try {
       const { message } = await api.reply(id, text)
       if (selectedRef.current !== id) return
-      setDraft('')
+      setDraft((d) => (d.trim() === text ? '' : d)) // keep anything typed while the reply was in flight
       setDetail((d) => d && d.conversation.id === id && !d.messages.some((m) => m.id === message.id)
         ? { ...d, messages: [...d.messages, message] } : d)
     } catch (err) {
       if (!expired(err) && selectedRef.current === id) setReplyError(true)
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
   }
 
@@ -157,10 +180,11 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
         </header>
         <nav className="filters">
           {FILTERS.map(([f, label]) => (
-            <button key={f} className={f === filter ? 'active' : ''} onClick={() => setFilter(f)}>{label}</button>
+            <button key={f} className={f === filter ? 'active' : ''} aria-pressed={f === filter} onClick={() => setFilter(f)}>{label}</button>
           ))}
         </nav>
         <ConversationList items={items} selectedId={selectedId} onSelect={select} />
+        {nextCursor && <button className="load-more" onClick={() => void loadMore()}>Load more</button>}
       </aside>
       <main className="col-timeline">
         {!detail && <p className="empty">Select a conversation</p>}
@@ -179,8 +203,8 @@ export function Inbox({ user, onLogout }: { user: User; onLogout: () => void }) 
             <Timeline messages={detail.messages} />
             {conv.status !== 'closed' && (
               <form className="reply" onSubmit={send}>
-                <input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply as the team…" />
-                <button type="submit">Send</button>
+                <input aria-label="Reply" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Reply as the team…" />
+                <button type="submit" disabled={sending}>Send</button>
                 {replyError && <p role="alert" className="error">Could not send. Try again.</p>}
               </form>
             )}

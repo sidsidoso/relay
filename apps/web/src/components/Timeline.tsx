@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { audioUrl, type Message } from '../api'
 
 const WHO = { contact: 'Customer', agent: 'AI agent', user: 'Team', system: 'System' } as const
@@ -10,8 +11,14 @@ function Transcript({ t }: { t: Message['transcription'] }) {
 }
 
 export function Timeline({ messages }: { messages: Message[] }) {
+  const list = useRef<HTMLOListElement>(null)
+  // Follow the conversation: jump to the newest message whenever one is added.
+  useEffect(() => {
+    const el = list.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages.length])
   return (
-    <ol className="timeline">
+    <ol className="timeline" ref={list}>
       {messages.map((m) => (
         <li key={m.id} className={`msg msg-${m.sender}`}>
           <span className="msg-who">{WHO[m.sender]}</span>

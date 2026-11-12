@@ -30,3 +30,12 @@ describe('Timeline', () => {
     expect(container.querySelector('audio')).toBeNull()
   })
 })
+
+it('scrolls to the newest message when one arrives', () => {
+  const msg = (id: number) => ({ id, conversationId: 1, sender: 'contact' as const, userId: null, type: 'text' as const, text: `m${id}`, mediaPath: null, mediaMime: null, transcription: null, createdAt: '2026-11-12T10:00:00Z' })
+  const { container, rerender } = render(<Timeline messages={[msg(1)]} />)
+  const list = container.querySelector('ol')!
+  Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 500 })
+  rerender(<Timeline messages={[msg(1), msg(2)]} />)
+  expect(list.scrollTop).toBe(500)
+})

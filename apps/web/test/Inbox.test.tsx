@@ -27,7 +27,7 @@ const mocked = api as unknown as Record<keyof typeof api, ReturnType<typeof vi.f
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocked.list.mockResolvedValue({ conversations: [summary(1, 'Ana'), summary(2, 'Bob')] })
+  mocked.list.mockResolvedValue({ conversations: [summary(1, 'Ana'), summary(2, 'Bob')], nextCursor: null })
   mocked.get.mockImplementation(async (id: number) => detail(id, id === 1 ? 'Ana' : 'Bob'))
   mocked.agentRuns.mockResolvedValue({ runs: [] })
 })
@@ -156,5 +156,47 @@ describe('Inbox', () => {
     act(() => onFrame({ event: 'message.updated', data: { conversationId: 1, message: { ...audio, transcription: { status: 'ok', text: 'Quanto custa?' } } } }))
     expect(await screen.findByText('Quanto custa?')).toBeInTheDocument()
     expect(screen.queryByText('Not transcribed yet')).toBeNull()
+  })
+
+  it('sends a reply once even when submitted twice quickly', async () => {
+    let resolve!: (v: unknown) => void
+    mocked.reply.mockReturnValue(new Promise((r) => { resolve = r }))
+    await openFirst()
+    const input = screen.getByPlaceholderText(/reply as the team/i)
+    fireEvent.change(input, { target: { value: 'once' } })
+    fireEvent.submit(input.closest('form')!)
+    fireEvent.submit(input.closest('form')!)
+    expect(mocked.reply).toHaveBeenCalledTimes(1)
+    await act(async () => { resolve({ message: { ...detail(1, 'Ana').messages[0]!, id: 998, sender: 'user', text: 'once' } }) })
+  })
+
+  it('keeps a newer draft typed while the reply was in flight', async () => {
+    let resolve!: (v: unknown) => void
+    mocked.reply.mockReturnValue(new Promise((r) => { resolve = r }))
+    await openFirst()
+    const input = screen.getByPlaceholderText(/reply as the team/i)
+    fireEvent.change(input, { target: { value: 'first' } })
+    fireEvent.submit(input.closest('form')!)
+    fireEvent.change(input, { target: { value: 'second thought' } })
+    await act(async () => { resolve({ message: { ...detail(1, 'Ana').messages[0]!, id: 997, sender: 'user', text: 'first' } }) })
+    expect(input).toHaveValue('second thought')
+  })
+
+  it('labels the reply box and marks the active filter', async () => {
+    await openFirst()
+    expect(screen.getByLabelText(/^reply$/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Closed' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('loads more conversations with the cursor', async () => {
+    mocked.list.mockImplementation(async (_f: string, page?: { before?: string }) => page?.before
+      ? { conversations: [summary(3, 'Cid')], nextCursor: null }
+      : { conversations: [summary(1, 'Ana'), summary(2, 'Bob')], nextCursor: 'c1' })
+    render(<Inbox user={user} onLogout={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: /load more/i }))
+    expect(await screen.findByRole('button', { name: /Cid/ })).toBeInTheDocument()
+    expect(mocked.list).toHaveBeenLastCalledWith('all', { before: 'c1' })
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument()
   })
 })

@@ -67,3 +67,5 @@ textarea { font: inherit; padding: 8px; border: 1px solid var(--line); border-ra
 .kb-editor label { display: flex; flex-direction: column; gap: 4px; }
 .kb-editor textarea { font-family: ui-monospace, monospace; }
 @media (max-width: 700px) { .kb-grid { grid-template-columns: 1fr; } }
+.load-more { margin: 8px; }
+.demo-credentials code { padding: 1px 4px; border-radius: 4px; background: var(--line); }
