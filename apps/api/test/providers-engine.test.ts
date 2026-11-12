@@ -8,7 +8,7 @@ import { receiveInbound, getConversation } from '../src/core/conversations'
 import { loadKnowledge, searchKnowledge } from '../src/agent/knowledge'
 import { ClaudeProvider } from '../src/agent/providers/claude'
 import { OllamaProvider } from '../src/agent/providers/ollama'
-import { runAgentTurn, KNOWLEDGE_HEADER, type EngineDeps } from '../src/agent/engine'
+import { runAgentTurn, KNOWLEDGE_HEADER, REFUSAL_REASON, type EngineDeps } from '../src/agent/engine'
 import { listRuns } from '../src/agent/runs'
 import type { Provider } from '../src/agent/providers/types'
 import { fakeFetch, fixture, type Recorded } from './fake-fetch'
@@ -63,12 +63,15 @@ describe('agent turns over recorded provider responses', () => {
     expect(listRuns(deps.db, id)[0]!.error).toMatch(/^claude_rate_limited: /)
   })
 
-  it('Claude: a refusal hands off', async () => {
+  it('Claude: a refusal hands off as a transfer with its own reason', async () => {
     const { provider } = claude([{ body: fixture('claude/refusal.json') }])
     await setup(provider)
     const id = ask('How much is a meeting room?')
-    expect((await runAgentTurn(deps, id)).outcome).toBe('failed')
-    expect(listRuns(deps.db, id)[0]!.error).toBe('claude_refusal')
+    expect((await runAgentTurn(deps, id)).outcome).toBe('transferred')
+    const { conversation, messages } = getConversation(deps, id)!
+    expect(conversation).toMatchObject({ status: 'waiting_human', handoffReason: REFUSAL_REASON })
+    expect(messages.at(-1)).toMatchObject({ sender: 'agent' })
+    expect(listRuns(deps.db, id)[0]).toMatchObject({ outcome: 'transferred', error: 'claude_refusal' })
   })
 
   it('Ollama: a model without tools still answers in text-only mode', async () => {

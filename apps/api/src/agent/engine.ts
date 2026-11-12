@@ -2,6 +2,7 @@ import { addTags, getConversation, postOutbound, type CoreDeps } from '../core/c
 import { agentSettings } from '../core/settings'
 import type { AgentRun, Message } from '../core/types'
 import { searchKnowledge, tokenize, type Passage } from './knowledge'
+import { ProviderError } from './providers/errors'
 import type { ChatMessage, Provider, ToolCall } from './providers/types'
 import { recordRun } from './runs'
 import { NO_RESULTS, TOOL_SPECS } from './tools'
@@ -9,6 +10,9 @@ import { NO_RESULTS, TOOL_SPECS } from './tools'
 export const HISTORY_LIMIT = 20
 export const MAX_TOOL_ROUNDS = 3
 export const DEFAULT_TIMEOUT_MS = 30_000
+
+/** Shown in the inbox when the model refuses: it is the model's decision, not an outage. */
+export const REFUSAL_REASON = 'The AI model declined to answer'
 
 /** How audio appears in the history sent to the provider (spec §4). */
 export const AUDIO_PLACEHOLDER = '[audio]'
@@ -172,12 +176,13 @@ export async function runAgentTurn(deps: EngineDeps, conversationId: number): Pr
     return transfer('The agent did not finish within the tool limit')
   } catch (err) {
     const error = err instanceof TimeoutError ? 'timeout' : String((err as Error)?.message ?? err).slice(0, 200)
+    const refused = err instanceof ProviderError && err.code.endsWith('_refusal')
     try {
-      if (stillFree()) await handOff(deps, conversationId, 'The AI provider failed', settings.handoffMessage)
+      if (stillFree()) await handOff(deps, conversationId, refused ? REFUSAL_REASON : 'The AI provider failed', settings.handoffMessage)
     } catch (handoffErr) {
       console.error('[relay] handoff after provider failure failed', conversationId, handoffErr)
     }
-    return log('failed', error)
+    return log(refused ? 'transferred' : 'failed', error)
   }
 }
 
